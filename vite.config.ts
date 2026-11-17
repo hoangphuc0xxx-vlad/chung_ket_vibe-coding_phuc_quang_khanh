@@ -1,0 +1,37 @@
+import react from '@vitejs/plugin-react';
+import { defineConfig, loadEnv, type Plugin } from 'vite';
+
+// Khi chạy `npm run dev`, phục vụ /api/ai bằng đúng mã của api/ai.js (trên Vercel nó chạy thành hàm riêng).
+function apiDev(): Plugin {
+  return {
+    name: 'api-dev',
+    configureServer(server) {
+      server.middlewares.use('/api/ai', (req, res) => {
+        let raw = '';
+        req.on('data', (c) => {
+          raw += c;
+          if (raw.length > 20000) req.destroy();
+        });
+        req.on('end', async () => {
+          res.setHeader('Content-Type', 'application/json; charset=utf-8');
+          try {
+            const mod = await server.ssrLoadModule('/api/ai.js');
+            const env = loadEnv(server.config.mode, process.cwd(), '');
+            const kq = await mod.taoGoiY(JSON.parse(raw || '{}'), env);
+            res.statusCode = kq.ok ? 200 : 502;
+            res.end(JSON.stringify(kq));
+          } catch {
+            res.statusCode = 500;
+            res.end(JSON.stringify({ ok: false, loi: 'Lỗi máy chủ' }));
+          }
+        });
+      });
+    },
+  };
+}
+
+export default defineConfig({
+  plugins: [react(), apiDev()],
+  // @ts-expect-error cấu hình của Vitest
+  test: { environment: 'node', include: ['src/**/*.test.ts'] },
+});

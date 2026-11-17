@@ -1,0 +1,1023 @@
+import { useEffect, useRef, useState, type FormEvent } from 'react';
+import jsQR from 'jsqr';
+import QRCode from 'qrcode';
+import { napMau } from './data/mau';
+import { layGoiY, type GoiY } from './lib/goiY';
+import {
+  MOC_BAC,
+  MOC_VANG,
+  UU_DAI,
+  VND_MOI_DIEM,
+  chuanMa,
+  congDiem,
+  dangKy,
+  doiUuDai,
+  dungVoucher,
+  hangKeTiep,
+  rong,
+  thongKe,
+  timThanhVien,
+  tinhDiem,
+  xepHang,
+  type Hang,
+  type KetQuaDiem,
+  type State,
+  type ThanhVien,
+} from './lib/loyalty';
+import { docChuoi, docState, ghiChuoi, ghiState } from './lib/storage';
+
+type Vai = 'thanhvien' | 'quay' | 'thele';
+interface ThongBao {
+  kieu: 'ok' | 'loi' | 'lenhang';
+  tieuDe: string;
+  chiTiet?: string;
+  id: number;
+}
+
+const K_VAI = 'thethanhvien.vai.v1';
+const K_MA = 'thethanhvien.ma.v1';
+
+const so = (n: number) => n.toLocaleString('vi-VN');
+const gio = (iso: string) =>
+  new Date(iso).toLocaleString('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+const lopHang = (h: Hang) => (h === 'Vàng' ? 'vang' : h === 'Bạc' ? 'bac' : 'dong');
+
+// Số điểm chạy dần từ giá trị cũ sang giá trị mới
+function useDemSo(dich: number): number {
+  const [v, setV] = useState(dich);
+  const tu = useRef(dich);
+  useEffect(() => {
+    const dau = tu.current;
+    if (dau === dich) return;
+    if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) {
+      tu.current = dich;
+      setV(dich);
+      return;
+    }
+    const t0 = performance.now();
+    let raf = 0;
+    const buoc = (t: number) => {
+      const p = Math.min(1, (t - t0) / 800);
+      setV(Math.round(dau + (dich - dau) * (1 - Math.pow(1 - p, 3))));
+      if (p < 1) raf = requestAnimationFrame(buoc);
+      else tu.current = dich;
+    };
+    raf = requestAnimationFrame(buoc);
+    return () => {
+      cancelAnimationFrame(raf);
+      tu.current = dich;
+    };
+  }, [dich]);
+  return v;
+}
+
+export default function App() {
+  const [state, setState] = useState<State>(docState);
+  const [vai, setVai] = useState<Vai>(() => {
+    const v = docChuoi(K_VAI, 'thanhvien');
+    return v === 'quay' || v === 'thele' ? v : 'thanhvien';
+  });
+  const [maHienTai, setMaHienTai] = useState(() => docChuoi(K_MA));
+  const [tb, setTb] = useState<ThongBao | null>(null);
+  const [online, setOnline] = useState(() => navigator.onLine);
+
+  useEffect(() => {
+    ghiState(state);
+  }, [state]);
+  useEffect(() => ghiChuoi(K_VAI, vai), [vai]);
+  useEffect(() => ghiChuoi(K_MA, maHienTai), [maHienTai]);
+  useEffect(() => {
+    const a = () => setOnline(true);
+    const b = () => setOnline(false);
+    window.addEventListener('online', a);
+    window.addEventListener('offline', b);
+    return () => {
+      window.removeEventListener('online', a);
+      window.removeEventListener('offline', b);
+    };
+  }, []);
+  useEffect(() => {
+    if (!tb) return;
+    const t = setTimeout(() => setTb(null), tb.kieu === 'lenhang' ? 5200 : 3800);
+    return () => clearTimeout(t);
+  }, [tb]);
+
+  const bao = (kieu: ThongBao['kieu'], tieuDe: string, chiTiet?: string) => setTb({ kieu, tieuDe, chiTiet, id: Date.now() });
+
+  const baoDiem = (r: KetQuaDiem) => {
+    const dong2 = `Số dư ${so(r.soDu)} điểm · hạng ${r.hangSau}`;
+    if (r.hangSau !== r.hangTruoc && r.thayDoi > 0) {
+      bao('lenhang', `${r.thanhVien.ten} lên hạng ${r.hangSau}!`, `+${so(r.thayDoi)} điểm · ${dong2}`);
+    } else if (r.thayDoi > 0) {
+      bao('ok', `+${so(r.thayDoi)} điểm cho ${r.thanhVien.ten}`, dong2);
+    } else {
+      bao('ok', `Đã đổi ưu đãi, trừ ${so(-r.thayDoi)} điểm`, dong2 + (r.hangSau !== r.hangTruoc ? ` (trước đó ${r.hangTruoc})` : ''));
+    }
+  };
+
+  const xuLyCong = (ma: string, tien: number, gd: string): string | null => {
+    const r = congDiem(state, ma, tien, gd, new Date());
+    if (!r.ok) {
+      bao('loi', 'Không cộng điểm', r.loi);
+      return r.loi;
+    }
+    setState(r.state);
+    baoDiem(r);
+    return null;
+  };
+
+  const xuLyDoi = (ma: string, maUuDai: string): string | null => {
+    const r = doiUuDai(state, ma, maUuDai, new Date());
+    if (!r.ok) {
+      bao('loi', 'Không đổi được ưu đãi', r.loi);
+      return r.loi;
+    }
+    setState(r.state);
+    baoDiem(r);
+    return null;
+  };
+
+  const xuLyDangKy = (ten: string, sdt: string): string | null => {
+    const r = dangKy(state, ten, sdt, new Date());
+    if (!r.ok) return r.loi;
+    setState(r.state);
+    setMaHienTai(r.thanhVien.ma);
+    bao('ok', `Chào mừng ${r.thanhVien.ten}!`, `Mã thành viên của bạn là ${r.thanhVien.ma}`);
+    return null;
+  };
+
+  const xuLyNapMau = () => {
+    const r = napMau(state);
+    setState(r.state);
+    bao(
+      'ok',
+      r.them > 0 ? 'Đã nạp dữ liệu mẫu của BTC' : 'Dữ liệu mẫu đã có sẵn',
+      r.them > 0 ? '8 thành viên, 7 giao dịch, 3 ưu đãi. Điểm giữ nguyên, không cộng lại.' : 'Không thêm bản ghi nào, điểm không đổi.',
+    );
+  };
+
+  const xuLyXoa = () => {
+    if (!window.confirm('Xóa toàn bộ thành viên, giao dịch và ví ưu đãi trên máy này? Không hoàn tác được.')) return;
+    setState(rong());
+    setMaHienTai('');
+    bao('ok', 'Đã xóa toàn bộ dữ liệu');
+  };
+
+  const tv = state.thanhVien.find((m) => m.ma === maHienTai);
+  const moThe = (ma: string) => {
+    setMaHienTai(ma);
+    setVai('thanhvien');
+  };
+
+  return (
+    <div className="khung">
+      <header className="dau">
+        <div className="thuong-hieu">
+          <span className="logo" aria-hidden="true">
+            ★
+          </span>
+          <span>Thẻ Thành Viên</span>
+        </div>
+        <nav className="vai" aria-label="Chuyển vai">
+          {(
+            [
+              ['thanhvien', 'Thành viên'],
+              ['quay', 'Quầy'],
+              ['thele', 'Thể lệ'],
+            ] as const
+          ).map(([k, nhan]) => (
+            <button key={k} type="button" className={vai === k ? 'chon' : ''} aria-pressed={vai === k} onClick={() => setVai(k)}>
+              {nhan}
+            </button>
+          ))}
+        </nav>
+      </header>
+
+      {!online ? (
+        <p className="offline" role="status">
+          Đang mất mạng. App vẫn chạy bình thường, mọi dữ liệu lưu trên máy này.
+        </p>
+      ) : null}
+
+      <main>
+        {vai === 'thanhvien' ? (
+          <ThanhVienView
+            state={state}
+            tv={tv}
+            onChon={setMaHienTai}
+            onDangKy={xuLyDangKy}
+            onDoi={xuLyDoi}
+            onDung={(id) => setState((s) => dungVoucher(s, id))}
+            onNapMau={xuLyNapMau}
+          />
+        ) : null}
+        {vai === 'quay' ? (
+          <QuayView state={state} onCong={xuLyCong} onMoThe={moThe} onNapMau={xuLyNapMau} onXoa={xuLyXoa} onBao={bao} />
+        ) : null}
+        {vai === 'thele' ? <TheLe /> : null}
+      </main>
+
+      <footer className="chan">
+        Dữ liệu lưu trên trình duyệt này (localStorage). Bộ dữ liệu mẫu là dữ liệu hư cấu do Ban tổ chức cung cấp.
+      </footer>
+
+      {tb ? (
+        <div key={tb.id} className={`toast toast-${tb.kieu}`} role="status" aria-live="polite">
+          {tb.kieu === 'lenhang' ? (
+            <span className="phao" aria-hidden="true">
+              <i />
+              <i />
+              <i />
+              <i />
+              <i />
+              <i />
+            </span>
+          ) : null}
+          <strong>{tb.tieuDe}</strong>
+          {tb.chiTiet ? <span>{tb.chiTiet}</span> : null}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+/* ================= THẺ ================= */
+
+function The({ tv }: { tv: ThanhVien }) {
+  const hang = xepHang(tv.diem);
+  const ke = hangKeTiep(tv.diem);
+  const diemHien = useDemSo(tv.diem);
+  const [qr, setQr] = useState('');
+  useEffect(() => {
+    let song = true;
+    // Nội dung QR đúng bằng mã thành viên, giống QR chuẩn của BTC
+    QRCode.toDataURL(tv.ma, { margin: 1, width: 240, errorCorrectionLevel: 'M' })
+      .then((u) => {
+        if (song) setQr(u);
+      })
+      .catch(() => undefined);
+    return () => {
+      song = false;
+    };
+  }, [tv.ma]);
+  const dau = hang === 'Đồng' ? 0 : hang === 'Bạc' ? MOC_BAC : MOC_VANG;
+  const pt = ke ? Math.max(3, Math.round(((tv.diem - dau) / (ke.moc - dau)) * 100)) : 100;
+  return (
+    <section className={`the the-${lopHang(hang)}`} aria-label={`Thẻ thành viên hạng ${hang}`}>
+      <div className="the-tren">
+        <span className="the-nhan">THẺ THÀNH VIÊN</span>
+        <span className="the-hang" key={hang}>
+          Hạng {hang}
+        </span>
+      </div>
+      <div className="the-giua">
+        <div className="the-tt">
+          <p className="the-ten">{tv.ten}</p>
+          <p className="the-ma">{tv.ma}</p>
+          <p className="the-diem" key={tv.diem}>
+            <strong>{so(diemHien)}</strong> điểm
+          </p>
+        </div>
+        {qr ? <img className="the-qr" src={qr} alt={`Mã QR của thẻ ${tv.ma}`} width={112} height={112} /> : <div className="the-qr" />}
+      </div>
+      <div className="the-duoi">
+        <div className="thanh" role="progressbar" aria-valuenow={pt} aria-valuemin={0} aria-valuemax={100} aria-label="Tiến độ lên hạng">
+          <span style={{ width: `${pt}%` }} />
+        </div>
+        <p>{ke ? `Còn ${so(ke.thieu)} điểm nữa lên hạng ${ke.hang}` : 'Bạn đang ở hạng cao nhất'}</p>
+      </div>
+    </section>
+  );
+}
+
+/* ================= CHẾ ĐỘ THÀNH VIÊN ================= */
+
+function ThanhVienView(p: {
+  state: State;
+  tv: ThanhVien | undefined;
+  onChon: (ma: string) => void;
+  onDangKy: (ten: string, sdt: string) => string | null;
+  onDoi: (ma: string, maUuDai: string) => string | null;
+  onDung: (id: string) => void;
+  onNapMau: () => void;
+}) {
+  const { state, tv } = p;
+  const [ten, setTen] = useState('');
+  const [sdt, setSdt] = useState('');
+  const [loiDK, setLoiDK] = useState('');
+  const [tim, setTim] = useState('');
+  const [loiTim, setLoiTim] = useState('');
+  const [loiDoi, setLoiDoi] = useState('');
+  const [goiY, setGoiY] = useState<GoiY | null>(null);
+  const [dangHoi, setDangHoi] = useState(false);
+
+  useEffect(() => {
+    setGoiY(null);
+    setLoiDoi('');
+  }, [tv?.ma]);
+
+  if (!tv) {
+    const guiDK = (e: FormEvent) => {
+      e.preventDefault();
+      const loi = p.onDangKy(ten, sdt);
+      setLoiDK(loi ?? '');
+      if (!loi) {
+        setTen('');
+        setSdt('');
+      }
+    };
+    const guiTim = (e: FormEvent) => {
+      e.preventDefault();
+      const m = timThanhVien(state, tim);
+      if (!m) setLoiTim('Không tìm thấy thẻ với mã hoặc số điện thoại này.');
+      else {
+        setLoiTim('');
+        p.onChon(m.ma);
+      }
+    };
+    return (
+      <div className="luoi">
+        <section className="hop">
+          <h1>Đăng ký thẻ thành viên</h1>
+          <p className="phu">Nhập tên và số điện thoại, bạn nhận mã thành viên và thẻ ngay.</p>
+          <form onSubmit={guiDK} noValidate>
+            <label htmlFor="dk-ten">Họ tên</label>
+            <input id="dk-ten" value={ten} onChange={(e) => setTen(e.target.value)} autoComplete="name" placeholder="Ví dụ: Lan Phạm" />
+            <label htmlFor="dk-sdt">Số điện thoại</label>
+            <input
+              id="dk-sdt"
+              value={sdt}
+              onChange={(e) => setSdt(e.target.value)}
+              inputMode="numeric"
+              autoComplete="tel"
+              placeholder="Ví dụ: 0900001009"
+              aria-describedby={loiDK ? 'dk-loi' : undefined}
+            />
+            {loiDK ? (
+              <p className="loi" id="dk-loi" role="alert">
+                {loiDK}
+              </p>
+            ) : null}
+            <button className="nut" type="submit">
+              Đăng ký và nhận thẻ
+            </button>
+          </form>
+        </section>
+        <section className="hop">
+          <h2>Đã có thẻ?</h2>
+          <form onSubmit={guiTim} noValidate className="hang-ngang">
+            <div className="gian">
+              <label htmlFor="tim-ma">Mã thẻ hoặc số điện thoại</label>
+              <input id="tim-ma" value={tim} onChange={(e) => setTim(e.target.value)} placeholder="Ví dụ: KT-004" />
+            </div>
+            <button className="nut nut-phu" type="submit">
+              Mở thẻ
+            </button>
+          </form>
+          {loiTim ? (
+            <p className="loi" role="alert">
+              {loiTim}
+            </p>
+          ) : null}
+          {state.thanhVien.length > 0 ? (
+            <>
+              <p className="phu">Bản thi không có đăng nhập thật, bạn chọn nhanh một thành viên để xem thẻ:</p>
+              <div className="chip-ds">
+                {state.thanhVien.map((m) => (
+                  <button key={m.ma} type="button" className={`chip chip-${lopHang(xepHang(m.diem))}`} onClick={() => p.onChon(m.ma)}>
+                    {m.ma} · {m.ten}
+                  </button>
+                ))}
+              </div>
+            </>
+          ) : (
+            <div className="trong">
+              <p>Chưa có thành viên nào trên máy này.</p>
+              <button type="button" className="nut nut-phu" onClick={p.onNapMau}>
+                Nạp dữ liệu mẫu
+              </button>
+            </div>
+          )}
+        </section>
+      </div>
+    );
+  }
+
+  const lichSu = state.bienDong.filter((b) => b.maTV === tv.ma);
+  const vi = state.vi.filter((v) => v.maTV === tv.ma);
+  const hang = xepHang(tv.diem);
+
+  const hoiGoiY = async () => {
+    setDangHoi(true);
+    setGoiY(await layGoiY(tv));
+    setDangHoi(false);
+  };
+
+  return (
+    <div className="luoi">
+      <div className="cot">
+        <The tv={tv} />
+        <div className="hang-nut khong-in">
+          <button type="button" className="nut nut-phu" onClick={() => window.print()}>
+            In thẻ
+          </button>
+          <button type="button" className="nut nut-phu" onClick={() => p.onChon('')}>
+            Đổi thành viên / Đăng ký mới
+          </button>
+        </div>
+
+        <section className="hop khong-in">
+          <h2>Gợi ý ưu đãi</h2>
+          {goiY ? (
+            <div className="goiy">
+              <span className={`nhan ${goiY.nguon === 'AI' ? 'nhan-ai' : ''}`}>
+                {goiY.nguon === 'AI' ? 'Nguồn: AI' : 'Nguồn: quy tắc trên máy (không dùng AI)'}
+              </span>
+              <p>{goiY.loiChao}</p>
+              <p>
+                <strong>{goiY.goiY}</strong>
+              </p>
+              <p className="phu">{goiY.lyDo}</p>
+              {goiY.kiemTra ? <p className="kiem-tra">{goiY.kiemTra}</p> : null}
+            </div>
+          ) : (
+            <p className="phu">Hỏi xem nên đổi ưu đãi nào với số điểm hiện có. Mất mạng thì app tự gợi ý theo quy tắc.</p>
+          )}
+          <button type="button" className="nut nut-phu" onClick={hoiGoiY} disabled={dangHoi}>
+            {dangHoi ? 'Đang hỏi…' : goiY ? 'Hỏi lại' : 'Gợi ý cho tôi'}
+          </button>
+        </section>
+      </div>
+
+      <div className="cot khong-in">
+        <section className="hop">
+          <h2>Đổi điểm lấy ưu đãi</h2>
+          <ul className="ds">
+            {UU_DAI.map((u) => {
+              const du = tv.diem >= u.diemCan;
+              const con = tv.diem - u.diemCan;
+              return (
+                <li key={u.ma} className="dong">
+                  <div className="gian">
+                    <p className="dam">{u.ten}</p>
+                    <p className="phu">
+                      {u.moTa} · {so(u.diemCan)} điểm
+                    </p>
+                    <p className={du ? 'phu' : 'phu canh-bao'}>
+                      {du
+                        ? `Đổi xong còn ${so(con)} điểm${xepHang(con) !== hang ? `, về hạng ${xepHang(con)}` : ''}`
+                        : `Thiếu ${so(-con)} điểm`}
+                    </p>
+                  </div>
+                  <button type="button" className={du ? 'nut' : 'nut nut-phu'} onClick={() => setLoiDoi(p.onDoi(tv.ma, u.ma) ?? '')}>
+                    Đổi
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+          {loiDoi ? (
+            <p className="loi" role="alert">
+              {loiDoi}
+            </p>
+          ) : null}
+        </section>
+
+        <section className="hop">
+          <h2>Ví ưu đãi ({vi.length})</h2>
+          {vi.length === 0 ? (
+            <p className="phu">Chưa có ưu đãi nào. Đổi điểm ở trên, voucher sẽ nằm ở đây.</p>
+          ) : (
+            <ul className="ds">
+              {vi.map((v) => (
+                <li key={v.id} className={`dong ve ${v.daDung ? 've-dung' : ''}`}>
+                  <div className="gian">
+                    <p className="dam">{v.ten}</p>
+                    <p className="phu">
+                      Mã {v.id} · đổi lúc {gio(v.thoiGian)}
+                    </p>
+                  </div>
+                  {v.daDung ? (
+                    <span className="nhan">Đã dùng</span>
+                  ) : (
+                    <button type="button" className="nut nut-phu" onClick={() => p.onDung(v.id)}>
+                      Dùng
+                    </button>
+                  )}
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
+
+        <section className="hop">
+          <h2>Lịch sử biến động điểm</h2>
+          {lichSu.length === 0 ? (
+            <p className="phu">Chưa có biến động. Đưa mã thẻ cho nhân viên quầy để được cộng điểm.</p>
+          ) : (
+            <div className="bang-cuon">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Loại</th>
+                    <th className="phai">Điểm</th>
+                    <th>Thời gian</th>
+                    <th className="phai">Số dư</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {lichSu.map((b) => (
+                    <tr key={b.id}>
+                      <td>
+                        {b.loai}
+                        <span className="phu nho"> · {b.thamChieu}</span>
+                      </td>
+                      <td className={`phai dam ${b.diem > 0 ? 'cong' : 'tru'}`}>
+                        {b.diem > 0 ? '+' : '−'}
+                        {so(Math.abs(b.diem))}
+                      </td>
+                      <td>{gio(b.thoiGian)}</td>
+                      <td className="phai">{so(b.soDu)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </section>
+      </div>
+    </div>
+  );
+}
+
+/* ================= QUÉT QR (camera, ảnh) ================= */
+
+function QuetQR({ onMa }: { onMa: (ma: string) => void }) {
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const goi = useRef(onMa);
+  goi.current = onMa;
+  const [bat, setBat] = useState(false);
+  const [loi, setLoi] = useState('');
+
+  useEffect(() => {
+    if (!bat) return;
+    let stream: MediaStream | null = null;
+    let raf = 0;
+    let huy = false;
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d', { willReadFrequently: true });
+    (async () => {
+      try {
+        if (!navigator.mediaDevices?.getUserMedia) throw new Error('no-camera');
+        stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' }, audio: false });
+        if (huy) {
+          stream.getTracks().forEach((t) => t.stop());
+          return;
+        }
+        const v = videoRef.current;
+        if (!v) return;
+        v.srcObject = stream;
+        await v.play();
+        const quet = () => {
+          if (huy) return;
+          if (ctx && v.readyState >= 2 && v.videoWidth > 0) {
+            canvas.width = v.videoWidth;
+            canvas.height = v.videoHeight;
+            ctx.drawImage(v, 0, 0);
+            const d = ctx.getImageData(0, 0, canvas.width, canvas.height);
+            const kq = jsQR(d.data, d.width, d.height);
+            if (kq && kq.data.trim()) {
+              goi.current(kq.data.trim());
+              setBat(false);
+              return;
+            }
+          }
+          raf = requestAnimationFrame(quet);
+        };
+        raf = requestAnimationFrame(quet);
+      } catch {
+        setLoi('Không mở được camera. Hãy cho phép quyền camera, hoặc dùng "Quét từ ảnh", hoặc gõ mã thành viên.');
+        setBat(false);
+      }
+    })();
+    return () => {
+      huy = true;
+      cancelAnimationFrame(raf);
+      stream?.getTracks().forEach((t) => t.stop());
+    };
+  }, [bat]);
+
+  const tuAnh = async (f: File) => {
+    try {
+      const bmp = await createImageBitmap(f);
+      const tiLe = Math.min(1, 1200 / Math.max(bmp.width, bmp.height));
+      const c = document.createElement('canvas');
+      c.width = Math.max(1, Math.round(bmp.width * tiLe));
+      c.height = Math.max(1, Math.round(bmp.height * tiLe));
+      const x = c.getContext('2d');
+      if (!x) throw new Error('no-canvas');
+      x.fillStyle = '#fff';
+      x.fillRect(0, 0, c.width, c.height);
+      x.drawImage(bmp, 0, 0, c.width, c.height);
+      const d = x.getImageData(0, 0, c.width, c.height);
+      const kq = jsQR(d.data, d.width, d.height);
+      if (kq && kq.data.trim()) {
+        setLoi('');
+        goi.current(kq.data.trim());
+      } else setLoi('Không đọc được mã QR trong ảnh này. Thử ảnh rõ hơn.');
+    } catch {
+      setLoi('Không mở được ảnh này.');
+    }
+  };
+
+  return (
+    <div className="quet">
+      <div className="hang-nut">
+        <button
+          type="button"
+          className="nut nut-phu"
+          onClick={() => {
+            setLoi('');
+            setBat((b) => !b);
+          }}
+        >
+          {bat ? 'Tắt camera' : 'Quét QR bằng camera'}
+        </button>
+        <label className="nut nut-phu nut-file">
+          Quét từ ảnh
+          <input
+            type="file"
+            accept="image/*"
+            className="an"
+            onChange={(e) => {
+              const f = e.target.files?.[0];
+              if (f) void tuAnh(f);
+              e.target.value = '';
+            }}
+          />
+        </label>
+      </div>
+      {bat ? (
+        <div className="khung-cam">
+          <video ref={videoRef} muted playsInline aria-label="Hình từ camera để quét mã QR" />
+          <p className="phu">Đưa mã QR trên thẻ vào giữa khung hình.</p>
+        </div>
+      ) : null}
+      {loi ? (
+        <p className="loi" role="alert">
+          {loi}
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
+/* ================= CHẾ ĐỘ QUẦY ================= */
+
+function QuayView(p: {
+  state: State;
+  onCong: (ma: string, tien: number, gd: string) => string | null;
+  onMoThe: (ma: string) => void;
+  onNapMau: () => void;
+  onXoa: () => void;
+  onBao: (kieu: ThongBao['kieu'], tieuDe: string, chiTiet?: string) => void;
+}) {
+  const { state } = p;
+  const [ma, setMa] = useState('');
+  const [tien, setTien] = useState('');
+  const [gd, setGd] = useState('');
+  const [loi, setLoi] = useState('');
+  const tienRef = useRef<HTMLInputElement>(null);
+
+  const tv = ma.trim() ? timThanhVien(state, ma) : undefined;
+  const soTien = Number(tien.replace(/[^\d]/g, ''));
+  const diemSe = tinhDiem(soTien);
+  const tk = thongKe(state);
+
+  const nhanMa = (text: string) => {
+    const m = timThanhVien(state, text);
+    setMa(chuanMa(text));
+    setLoi('');
+    if (m) {
+      p.onBao('ok', `Đã quét: ${m.ma}`, `${m.ten} · ${so(m.diem)} điểm · hạng ${xepHang(m.diem)}`);
+      tienRef.current?.focus();
+    } else {
+      p.onBao('loi', 'Mã QR không thuộc thành viên nào', `Nội dung đọc được: ${text.slice(0, 40)}`);
+    }
+  };
+
+  const taoMaGD = () => {
+    const d = new Date();
+    const hai = (n: number) => String(n).padStart(2, '0');
+    setGd(`TX-${d.getFullYear()}${hai(d.getMonth() + 1)}${hai(d.getDate())}-${hai(d.getHours())}${hai(d.getMinutes())}${hai(d.getSeconds())}`);
+  };
+
+  const gui = (e: FormEvent) => {
+    e.preventDefault();
+    const l = p.onCong(tv?.ma ?? ma, soTien, gd);
+    setLoi(l ?? '');
+    if (!l) {
+      setTien('');
+      setGd('');
+    }
+  };
+
+  const lichSuTV = tv ? state.bienDong.filter((b) => b.maTV === tv.ma).slice(0, 4) : [];
+
+  return (
+    <div className="luoi">
+      <div className="cot">
+        <section className="hop">
+          <h1>Quầy: cộng điểm</h1>
+          <p className="phu">
+            {so(VND_MOI_DIEM)}đ = 1 điểm. Mỗi mã giao dịch chỉ được cộng điểm một lần.
+          </p>
+          <QuetQR onMa={nhanMa} />
+          <form onSubmit={gui} noValidate>
+            <label htmlFor="q-ma">Mã thành viên</label>
+            <input
+              id="q-ma"
+              value={ma}
+              onChange={(e) => setMa(e.target.value)}
+              onKeyDown={(e) => {
+                // Máy quét mã cầm tay gõ mã rồi tự nhấn Enter: chuyển sang ô số tiền thay vì gửi form
+                if (e.key === 'Enter' && !tien) {
+                  e.preventDefault();
+                  tienRef.current?.focus();
+                }
+              }}
+              placeholder="Ví dụ: KT-004"
+              autoComplete="off"
+              autoFocus
+            />
+            <p className="goi-y-o">Gõ tay, quét QR, hoặc dùng máy quét mã cầm tay (mã tự điền vào ô này).</p>
+
+            {ma.trim() ? (
+              tv ? (
+                <div className={`hoso hoso-${lopHang(xepHang(tv.diem))}`} role="status">
+                  <div className="gian">
+                    <p className="dam">
+                      {tv.ten} · {tv.ma}
+                    </p>
+                    <p className="phu">
+                      {so(tv.diem)} điểm · hạng {xepHang(tv.diem)} · SĐT {tv.sdt} · tham gia {gio(tv.ngayThamGia).slice(-10)}
+                    </p>
+                    {lichSuTV.length > 0 ? (
+                      <p className="phu nho">
+                        Gần đây:{' '}
+                        {lichSuTV.map((b) => `${b.diem > 0 ? '+' : '−'}${so(Math.abs(b.diem))} (${b.thamChieu})`).join(', ')}
+                      </p>
+                    ) : null}
+                  </div>
+                  <button type="button" className="nut nut-phu" onClick={() => p.onMoThe(tv.ma)}>
+                    Mở thẻ
+                  </button>
+                </div>
+              ) : (
+                <p className="loi" role="alert">
+                  Không tìm thấy thành viên với mã này.
+                </p>
+              )
+            ) : null}
+
+            <label htmlFor="q-tien">Số tiền giao dịch (VND)</label>
+            <input
+              id="q-tien"
+              ref={tienRef}
+              value={tien}
+              onChange={(e) => {
+                const n = e.target.value.replace(/[^\d]/g, '').slice(0, 12);
+                setTien(n ? Number(n).toLocaleString('vi-VN') : '');
+              }}
+              inputMode="numeric"
+              placeholder="Ví dụ: 1.000.000"
+              autoComplete="off"
+            />
+            <p className="goi-y-o">{soTien > 0 ? `${so(soTien)}đ → cộng ${so(diemSe)} điểm` : 'Nhập số tiền trên hóa đơn.'}</p>
+
+            <label htmlFor="q-gd">Mã giao dịch (mã hóa đơn)</label>
+            <div className="hang-ngang">
+              <input id="q-gd" className="gian" value={gd} onChange={(e) => setGd(e.target.value)} placeholder="Ví dụ: TX-NEW-001" autoComplete="off" />
+              <button type="button" className="nut nut-phu" onClick={taoMaGD}>
+                Tạo mã
+              </button>
+            </div>
+
+            {loi ? (
+              <p className="loi" role="alert">
+                {loi}
+              </p>
+            ) : null}
+            <button className="nut nut-to" type="submit">
+              Cộng điểm
+            </button>
+          </form>
+        </section>
+
+        <section className="hop">
+          <h2>Dữ liệu</h2>
+          <p className="phu">Nạp bộ dữ liệu mẫu của Ban tổ chức (8 thành viên, 7 giao dịch). Bấm nhiều lần không nhân đôi, không cộng lại điểm.</p>
+          <div className="hang-nut">
+            <button type="button" className="nut" onClick={p.onNapMau}>
+              Nạp dữ liệu mẫu
+            </button>
+            <button type="button" className="nut nut-nguy" onClick={p.onXoa}>
+              Xóa toàn bộ dữ liệu
+            </button>
+          </div>
+        </section>
+      </div>
+
+      <div className="cot">
+        <section className="hop">
+          <h2>Thống kê</h2>
+          <div className="so-lieu">
+            <div>
+              <strong>{so(tk.tongThanhVien)}</strong>
+              <span>thành viên</span>
+            </div>
+            <div>
+              <strong>{so(tk.tongDiemDaPhat)}</strong>
+              <span>điểm đã phát</span>
+            </div>
+            <div>
+              <strong>{so(tk.diemDaDoi)}</strong>
+              <span>điểm đã đổi</span>
+            </div>
+            <div>
+              <strong>{so(tk.soVoucher)}</strong>
+              <span>voucher trong ví</span>
+            </div>
+          </div>
+          <p className="phu">
+            Hạng: {tk.theoHang['Đồng']} Đồng · {tk.theoHang['Bạc']} Bạc · {tk.theoHang['Vàng']} Vàng. Điểm đã phát = điểm đang giữ ({so(tk.diemLuuHanh)}) + điểm đã đổi.
+          </p>
+        </section>
+
+        <section className="hop">
+          <h2>Thành viên ({state.thanhVien.length})</h2>
+          {state.thanhVien.length === 0 ? (
+            <div className="trong">
+              <p>Chưa có thành viên. Nạp dữ liệu mẫu hoặc đăng ký ở chế độ Thành viên.</p>
+            </div>
+          ) : (
+            <div className="bang-cuon">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Mã</th>
+                    <th>Họ tên</th>
+                    <th className="phai">Điểm</th>
+                    <th>Hạng</th>
+                    <th>
+                      <span className="sr">Chọn</span>
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {state.thanhVien.map((m) => (
+                    <tr key={m.ma} className={tv?.ma === m.ma ? 'dong-chon' : ''}>
+                      <td className="dam">{m.ma}</td>
+                      <td>{m.ten}</td>
+                      <td className="phai">{so(m.diem)}</td>
+                      <td>
+                        <span className={`chip chip-${lopHang(xepHang(m.diem))}`}>{xepHang(m.diem)}</span>
+                      </td>
+                      <td className="phai">
+                        <button
+                          type="button"
+                          className="lien-ket"
+                          onClick={() => {
+                            setMa(m.ma);
+                            setLoi('');
+                            tienRef.current?.focus();
+                          }}
+                        >
+                          Chọn
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </section>
+
+        <section className="hop">
+          <h2>Sổ giao dịch ({state.giaoDich.length})</h2>
+          {state.giaoDich.length === 0 ? (
+            <p className="phu">Chưa có giao dịch nào.</p>
+          ) : (
+            <div className="bang-cuon">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Mã giao dịch</th>
+                    <th>Thành viên</th>
+                    <th className="phai">Số tiền</th>
+                    <th className="phai">Điểm</th>
+                    <th>Thời gian</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {state.giaoDich.slice(0, 12).map((g) => (
+                    <tr key={g.ma}>
+                      <td className="dam">{g.ma}</td>
+                      <td>{g.maTV}</td>
+                      <td className="phai">{g.giaTri > 0 ? `${so(g.giaTri)}đ` : '–'}</td>
+                      <td className={`phai dam ${g.diem > 0 ? 'cong' : 'tru'}`}>
+                        {g.diem > 0 ? '+' : '−'}
+                        {so(Math.abs(g.diem))}
+                      </td>
+                      <td>{gio(g.thoiGian)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </section>
+      </div>
+    </div>
+  );
+}
+
+/* ================= THỂ LỆ ================= */
+
+function TheLe() {
+  return (
+    <div className="luoi">
+      <section className="hop">
+        <h1>Thể lệ chương trình</h1>
+        <h2>Tích điểm</h2>
+        <p>
+          Cứ <strong>{so(VND_MOI_DIEM)}đ</strong> trên hóa đơn được <strong>1 điểm</strong>, làm tròn xuống. Ví dụ hóa đơn 1.000.000đ được 100 điểm.
+        </p>
+        <p>Nhân viên quầy cộng điểm bằng mã thành viên và mã giao dịch. Mỗi mã giao dịch chỉ được cộng một lần; nhập lại sẽ bị báo trùng.</p>
+        <h2>Hạng thành viên</h2>
+        <div className="bang-cuon">
+          <table>
+            <thead>
+              <tr>
+                <th>Hạng</th>
+                <th>Điểm hiện có</th>
+                <th>Màu thẻ</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>
+                  <span className="chip chip-dong">Đồng</span>
+                </td>
+                <td>Dưới {so(MOC_BAC)} điểm</td>
+                <td>Nâu đồng</td>
+              </tr>
+              <tr>
+                <td>
+                  <span className="chip chip-bac">Bạc</span>
+                </td>
+                <td>
+                  Từ {so(MOC_BAC)} đến {so(MOC_VANG - 1)} điểm
+                </td>
+                <td>Xám bạc</td>
+              </tr>
+              <tr>
+                <td>
+                  <span className="chip chip-vang">Vàng</span>
+                </td>
+                <td>Từ {so(MOC_VANG)} điểm trở lên</td>
+                <td>Vàng</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <p>Hạng tự đổi theo số điểm hiện có, ngay sau mỗi lần cộng hoặc đổi điểm. Đổi nhiều điểm có thể làm hạng giảm; app báo trước ở từng ưu đãi.</p>
+      </section>
+      <section className="hop">
+        <h2>Đổi điểm lấy ưu đãi</h2>
+        <ul className="ds">
+          {UU_DAI.map((u) => (
+            <li key={u.ma} className="dong">
+              <div className="gian">
+                <p className="dam">{u.ten}</p>
+                <p className="phu">
+                  {u.moTa} · mã {u.ma}
+                </p>
+              </div>
+              <span className="nhan">{so(u.diemCan)} điểm</span>
+            </li>
+          ))}
+        </ul>
+        <p>Đủ điểm thì ưu đãi vào ví của thành viên và điểm bị trừ đúng bằng mức đổi. Thiếu điểm thì từ chối, số dư giữ nguyên.</p>
+        <h2>Mã QR</h2>
+        <p>Mỗi thẻ có mã QR chứa đúng mã thành viên (ví dụ KT-004). Quầy quét bằng camera, bằng ảnh, hoặc máy quét cầm tay.</p>
+        <h2>Dữ liệu và AI</h2>
+        <p>
+          Toàn bộ dữ liệu lưu trên trình duyệt này (localStorage) nên app chạy được khi mất mạng. Bộ dữ liệu mẫu do Ban tổ chức cung cấp, là dữ liệu hư cấu.
+          Mục "Gợi ý ưu đãi" dùng AI khi có mạng và luôn ghi rõ nguồn; mất mạng thì gợi ý bằng quy tắc trên máy. Voucher và quà tặng là mô phỏng.
+        </p>
+      </section>
+    </div>
+  );
+}
