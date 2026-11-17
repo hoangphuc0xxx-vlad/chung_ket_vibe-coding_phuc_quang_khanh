@@ -17,6 +17,13 @@ Hai đầu là hai chế độ trong cùng một app, chuyển bằng nút **Th�
 | 6 | Lịch sử biến động điểm: loại, số điểm, thời gian | Chế độ Thành viên → Lịch sử; Quầy → Sổ giao dịch. |
 | 7 | Nút **Nạp dữ liệu mẫu** | Chế độ Quầy → Dữ liệu (và ở màn hình Thành viên khi chưa có dữ liệu). |
 
+**Thanh toán bằng điểm và hóa đơn – đã xong (làm thêm ngoài đề)**
+
+- Tại Quầy, thành viên dùng điểm trừ thẳng vào hóa đơn: **1 điểm = 40đ**. Không vượt số dư, không vượt giá trị hóa đơn; có nút **Dùng tối đa**.
+- **Hóa đơn** (tạm tính trước khi bấm, và bản đã lập sau khi bấm) ghi rõ: tổng tiền hàng, **trừ bằng điểm (số điểm × 40đ)**, khách cần trả, và phép tính điểm: số dư − điểm thanh toán + điểm tích lũy.
+- Phần tiền khách thực trả vẫn được tích điểm (10.000đ = 1 điểm).
+- Lịch sử của thành viên tách thành **hai mục riêng**: *Lịch sử cộng điểm* và *Lịch sử tiêu điểm* (đổi ưu đãi, thanh toán hóa đơn), mỗi mục có tổng.
+
 **Điểm thưởng QR – đã xong**
 
 - Thẻ hiện mã QR, nội dung đúng bằng mã thành viên (giống QR chuẩn của BTC, ví dụ `KT-004`).
@@ -34,7 +41,8 @@ Hai đầu là hai chế độ trong cùng một app, chuyển bằng nút **Th�
 - **10.000đ = 1 điểm**, làm tròn xuống.
 - **Đồng** dưới 1.000 điểm · **Bạc** 1.000 – 4.999 · **Vàng** từ 5.000.
 - Hạng tính theo **điểm hiện có** (khớp bộ mẫu: KT-003 đổi điểm còn 800 thì là Đồng). Đổi nhiều điểm có thể giảm hạng; app báo trước ở từng ưu đãi.
-- Tổng điểm đã phát = điểm thành viên đang giữ + điểm đã đổi.
+- **Dùng điểm thanh toán: 1 điểm = 40đ** (khớp voucher 500 điểm = 20.000đ). Điểm tích lũy tính trên số tiền khách thực trả sau khi trừ điểm.
+- Tổng điểm đã phát = điểm thành viên đang giữ + điểm đã tiêu (đổi ưu đãi, thanh toán).
 
 ## Cách chạy
 
@@ -65,7 +73,7 @@ Muốn dùng AI thật: sao chép `.env.example` thành `.env`, điền `GEMINI_
 
 ## Kiểm thử
 
-`npm test`: 15 test Vitest đạt (`src/lib/loyalty.test.ts`, `src/lib/qr.test.ts`), gồm 5 ca của BTC trong sheet `KT_CaKiemTra`.
+`npm test`: 19 test Vitest đạt (`src/lib/loyalty.test.ts`, `src/lib/qr.test.ts`), gồm 5 ca của BTC trong sheet `KT_CaKiemTra`.
 Test QR vẽ mã `KT-004` thành điểm ảnh rồi giải mã lại, giống camera chụp thẻ.
 
 | Mã | Tình huống | Đầu vào | Kết quả mong đợi | Kết quả |
@@ -79,6 +87,9 @@ Test QR vẽ mã `KT-004` thành điểm ảnh rồi giải mã lại, giống c
 | TC-07 | Đăng ký | Tên + SĐT hợp lệ / SĐT trùng / SĐT sai | Sinh KT-009 / từ chối / từ chối | Đạt (test tự động) |
 | TC-08 | Lên hạng ngay | KT-003 800 điểm + 2.000.000đ | 1.000 điểm, Đồng → Bạc | Đạt (test tự động) |
 | TC-09 | Dữ liệu sai ở Quầy | Sai mã, tiền 0, thiếu mã GD, dưới 10.000đ | Báo lỗi cụ thể, không cộng | Đạt (test tự động) |
+| TC-11 | Thanh toán bằng điểm | KT-004, hóa đơn 1.000.000đ, dùng 200 điểm | Trừ 8.000đ, trả 992.000đ, +99 điểm, số dư 3.200 → 3.099 | Đạt (test tự động + thử tay) |
+| TC-12 | Dùng điểm quá mức | Quá số dư; quá giá trị hóa đơn; số lẻ | Từ chối, số dư giữ nguyên | Đạt (test tự động) |
+| TC-13 | Trả toàn bộ bằng điểm | KT-006, hóa đơn 100.000đ, dùng 2.500 điểm | Khách trả 0đ, không cộng điểm | Đạt (test tự động) |
 | TC-10 | AI hỏng hoặc mất mạng | Tắt mạng rồi bấm Gợi ý | Ra gợi ý theo quy tắc, ghi rõ nguồn | Đạt (test tự động cho quy tắc) |
 
 ## Cấu trúc

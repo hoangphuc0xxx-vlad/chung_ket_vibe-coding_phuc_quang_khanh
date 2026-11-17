@@ -12,6 +12,8 @@ Công cụ: Claude Code. Nhóm ra yêu cầu, chốt quy tắc, duyệt kết qu
 | Phút 20 | Nối AI thật, có dự phòng | `api/ai.js` (Gemini → NVIDIA → quy tắc) | Xem 3 lỗi bên dưới |
 | Phút 30 | README, build, deploy | README, `npm run build`, Vercel | Kiểm tra link bằng tab ẩn danh |
 
+| Sau khi nộp bản đầu | Nhóm yêu cầu thêm: tách lịch sử cộng / tiêu điểm, dùng điểm để thanh toán, hóa đơn ghi rõ điểm trừ | Hàm `thanhToan` + 4 test, hóa đơn tạm tính và hóa đơn đã lập, 2 mục lịch sử | Chốt 1 điểm = 40đ để khớp voucher có sẵn; thử tay KT-004 dùng 200 điểm: 3.200 → 3.099 |
+
 ## Ba lần AI sai và cách nhóm xử lý
 
 1. **Công cụ xem thử mở nhầm dự án cũ** (SitePulse) thay vì app thi. Phát hiện nhờ đọc tiêu đề trang, tắt đi và chạy lại đúng thư mục.

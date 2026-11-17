@@ -1,7 +1,8 @@
 // Toàn bộ quy tắc của thẻ thành viên. Hàm thuần: nhận trạng thái cũ, trả trạng thái mới, không đụng giao diện.
 
 export type Hang = 'Đồng' | 'Bạc' | 'Vàng';
-export type LoaiBienDong = 'Cộng điểm' | 'Đổi điểm';
+// 'Đổi điểm' = đổi lấy ưu đãi; 'Tiêu điểm' = dùng điểm trừ thẳng vào hóa đơn
+export type LoaiBienDong = 'Cộng điểm' | 'Đổi điểm' | 'Tiêu điểm';
 
 export interface ThanhVien {
   ma: string;
@@ -41,15 +42,30 @@ export interface Voucher {
   thoiGian: string;
   daDung: boolean;
 }
+export interface HoaDon {
+  ma: string;
+  maTV: string;
+  tenTV: string;
+  thoiGian: string;
+  tongTien: number; // tổng tiền hàng
+  diemDung: number; // số điểm khách dùng để thanh toán
+  giamTru: number; // số tiền được trừ nhờ điểm
+  conPhaiTra: number; // khách còn phải trả
+  diemCong: number; // điểm cộng cho phần tiền khách trả
+  soDuTruoc: number;
+  soDuSau: number;
+}
 export interface State {
   thanhVien: ThanhVien[];
   giaoDich: GiaoDich[];
   bienDong: BienDong[];
   vi: Voucher[];
+  hoaDon: HoaDon[];
 }
 
 // ===== Thể lệ (công bố trong app ở mục Thể lệ) =====
 export const VND_MOI_DIEM = 10000; // 10.000đ = 1 điểm, làm tròn xuống
+export const VND_MOI_DIEM_TIEU = 40; // dùng điểm thanh toán: 1 điểm = 40đ (khớp voucher 500 điểm = 20.000đ)
 export const MOC_BAC = 1000; // từ 1.000 điểm: Bạc
 export const MOC_VANG = 5000; // từ 5.000 điểm: Vàng
 export const UU_DAI: UuDai[] = [
@@ -58,7 +74,13 @@ export const UU_DAI: UuDai[] = [
   { ma: 'KT-VCH-03', ten: 'Quà tặng đặc biệt', moTa: 'Quà tặng mô phỏng', diemCan: 2000 },
 ];
 
-export const rong = (): State => ({ thanhVien: [], giaoDich: [], bienDong: [], vi: [] });
+export const rong = (): State => ({ thanhVien: [], giaoDich: [], bienDong: [], vi: [], hoaDon: [] });
+
+// Số điểm tối đa dùng được cho một hóa đơn: không quá số dư, không quá giá trị hóa đơn
+export function diemToiDa(soDu: number, tongTien: number): number {
+  if (!Number.isFinite(tongTien) || tongTien <= 0) return 0;
+  return Math.max(0, Math.min(soDu, Math.floor(tongTien / VND_MOI_DIEM_TIEU)));
+}
 
 export function tinhDiem(vnd: number): number {
   if (!Number.isFinite(vnd) || vnd <= 0) return 0;
@@ -163,6 +185,102 @@ export function congDiem(state: State, maTV: string, giaTri: number, maGD: strin
   };
 }
 
+// Lập hóa đơn ở quầy: khách có thể dùng điểm trừ vào tiền, phần tiền còn phải trả được cộng điểm.
+// diemDung = 0 thì giống hệt cộng điểm thông thường.
+export function thanhToan(
+  state: State,
+  maTV: string,
+  tongTien: number,
+  diemDung: number,
+  maGD: string,
+  now: Date,
+): KetQua<KetQuaDiem & { hoaDon: HoaDon }> {
+  if (!Number.isInteger(diemDung) || diemDung < 0) return { ok: false, loi: 'Số điểm dùng phải là số nguyên từ 0 trở lên.' };
+  const thoiGian = now.toISOString();
+
+  if (diemDung === 0) {
+    const r = congDiem(state, maTV, tongTien, maGD, now);
+    if (!r.ok) return r;
+    const hoaDon: HoaDon = {
+      ma: chuanMa(maGD),
+      maTV: r.thanhVien.ma,
+      tenTV: r.thanhVien.ten,
+      thoiGian,
+      tongTien,
+      diemDung: 0,
+      giamTru: 0,
+      conPhaiTra: tongTien,
+      diemCong: r.thayDoi,
+      soDuTruoc: r.soDu - r.thayDoi,
+      soDuSau: r.soDu,
+    };
+    return { ...r, state: { ...r.state, hoaDon: [hoaDon, ...(r.state.hoaDon ?? [])] }, hoaDon };
+  }
+
+  const ma = chuanMa(maTV);
+  const gd = chuanMa(maGD);
+  if (!ma) return { ok: false, loi: 'Bạn chưa nhập mã thành viên.' };
+  const tv = state.thanhVien.find((m) => m.ma === ma);
+  if (!tv) return { ok: false, loi: `Không tìm thấy thành viên ${ma}. Kiểm tra lại mã trên thẻ.` };
+  if (!Number.isFinite(tongTien) || tongTien <= 0) return { ok: false, loi: 'Số tiền hóa đơn phải là số lớn hơn 0.' };
+  if (tongTien > 1_000_000_000) return { ok: false, loi: 'Số tiền quá lớn (tối đa 1 tỷ đồng mỗi giao dịch).' };
+  if (!gd) return { ok: false, loi: 'Bạn chưa nhập mã giao dịch (mã trên hóa đơn).' };
+  if (!/^[A-Z0-9][A-Z0-9\-_]{2,39}$/.test(gd)) {
+    return { ok: false, loi: 'Mã giao dịch chỉ gồm chữ, số, dấu gạch và dài 3–40 ký tự.' };
+  }
+  const cu = state.giaoDich.find((g) => g.ma === gd);
+  if (cu) {
+    return { ok: false, loi: `Trùng mã giao dịch: ${gd} đã có trong sổ (thành viên ${cu.maTV}). Không trừ, không cộng điểm lần nữa.` };
+  }
+  if (diemDung > tv.diem) {
+    return { ok: false, loi: `Từ chối: muốn dùng ${diemDung} điểm nhưng thẻ chỉ có ${tv.diem} điểm. Số dư giữ nguyên.` };
+  }
+  const toiDa = diemToiDa(tv.diem, tongTien);
+  if (diemDung > toiDa) {
+    return { ok: false, loi: `Số điểm dùng vượt giá trị hóa đơn. Hóa đơn này dùng tối đa ${toiDa} điểm.` };
+  }
+  const giamTru = diemDung * VND_MOI_DIEM_TIEU;
+  const conPhaiTra = tongTien - giamTru;
+  const diemCong = tinhDiem(conPhaiTra); // chỉ cộng điểm cho phần tiền khách thực trả
+  const sauTru = tv.diem - diemDung;
+  const soDu = sauTru + diemCong;
+  const moi: ThanhVien = { ...tv, diem: soDu };
+  const n = state.bienDong.length;
+  const bienDongMoi: BienDong[] = [{ id: `LS-${now.getTime()}-${n + 1}`, maTV: ma, loai: 'Tiêu điểm', diem: -diemDung, thoiGian, soDu: sauTru, thamChieu: gd }];
+  if (diemCong > 0) {
+    bienDongMoi.unshift({ id: `LS-${now.getTime()}-${n + 2}`, maTV: ma, loai: 'Cộng điểm', diem: diemCong, thoiGian, soDu, thamChieu: gd });
+  }
+  const hoaDon: HoaDon = {
+    ma: gd,
+    maTV: ma,
+    tenTV: tv.ten,
+    thoiGian,
+    tongTien,
+    diemDung,
+    giamTru,
+    conPhaiTra,
+    diemCong,
+    soDuTruoc: tv.diem,
+    soDuSau: soDu,
+  };
+  return {
+    ok: true,
+    state: {
+      ...state,
+      thanhVien: state.thanhVien.map((m) => (m.ma === ma ? moi : m)),
+      giaoDich: [{ ma: gd, maTV: ma, loai: 'Tiêu điểm', thoiGian, giaTri: tongTien, diem: diemCong - diemDung }, ...state.giaoDich],
+      bienDong: [...bienDongMoi, ...state.bienDong],
+      hoaDon: [hoaDon, ...(state.hoaDon ?? [])],
+    },
+    thanhVien: moi,
+    thayDoi: diemCong - diemDung,
+    soDu,
+    hangTruoc: xepHang(tv.diem),
+    hangSau: xepHang(soDu),
+    hoaDon,
+  };
+}
+
 export function doiUuDai(state: State, maTV: string, maUuDai: string, now: Date): KetQua<KetQuaDiem & { voucher: Voucher }> {
   const ma = chuanMa(maTV);
   const tv = state.thanhVien.find((m) => m.ma === ma);
@@ -217,7 +335,7 @@ export function thongKe(state: State) {
   for (const m of state.thanhVien) theoHang[xepHang(m.diem)] += 1;
   return {
     tongThanhVien: state.thanhVien.length,
-    // Tổng điểm đã phát = điểm thành viên đang giữ + điểm đã đổi lấy ưu đãi
+    // Tổng điểm đã phát = điểm thành viên đang giữ + điểm đã tiêu (đổi ưu đãi, thanh toán hóa đơn)
     tongDiemDaPhat: diemLuuHanh + diemDaDoi,
     diemLuuHanh,
     diemDaDoi,

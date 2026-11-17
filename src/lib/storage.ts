@@ -11,7 +11,8 @@ export function docState(): State {
     if (!d || !Array.isArray(d.thanhVien) || !Array.isArray(d.giaoDich) || !Array.isArray(d.bienDong) || !Array.isArray(d.vi)) {
       return rong(); // dữ liệu hỏng thì coi như rỗng, không sập app
     }
-    return d as State;
+    // Bản lưu cũ chưa có sổ hóa đơn: bổ sung mảng rỗng
+    return { ...d, hoaDon: Array.isArray(d.hoaDon) ? d.hoaDon : [] } as State;
   } catch {
     return rong();
   }

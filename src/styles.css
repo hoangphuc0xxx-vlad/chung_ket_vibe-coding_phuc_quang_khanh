@@ -352,6 +352,94 @@ button.chip {
   justify-items: start;
 }
 
+.dau-muc {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+.dau-muc h2 {
+  margin: 0;
+}
+.nhan-cong {
+  background: #e3f4ec;
+  color: #0b5a43;
+}
+.nhan-tru {
+  background: #fdebe2;
+  color: #8f3009;
+}
+.hoadon {
+  margin-top: 14px;
+  border: 1px solid #b9c0ce;
+  border-radius: 10px;
+  padding: 12px 14px;
+  background: #fffdf5;
+}
+.hoadon-tam {
+  border-style: dashed;
+  background: #fafbfd;
+}
+.hoadon-dau {
+  display: grid;
+  gap: 2px;
+  padding-bottom: 8px;
+  border-bottom: 1px dashed #b9c0ce;
+  margin-bottom: 8px;
+}
+.hoadon dl {
+  margin: 0;
+  display: grid;
+  gap: 4px;
+}
+.hoadon dl div {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+}
+.hoadon dt {
+  color: var(--phu);
+}
+.hoadon dd {
+  margin: 0;
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.hd-tru dt,
+.hd-tru dd {
+  color: #a63a10;
+  font-weight: 700;
+}
+.hd-mo dd {
+  color: var(--phu);
+  font-weight: 400;
+}
+.hd-tong {
+  border-top: 1px solid #b9c0ce;
+  padding-top: 6px;
+  margin-top: 2px;
+}
+.hd-tong dt {
+  color: var(--chu);
+  font-weight: 700;
+}
+.hd-tong dd {
+  font-size: 1.2rem;
+  font-weight: 800;
+}
+.hd-diem {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px dashed #b9c0ce;
+  font-size: 0.93rem;
+}
+.hd-moi {
+  margin-top: 18px;
+}
+
 .kiem-tra {
   font-size: 0.9rem;
   background: #eef6f2;

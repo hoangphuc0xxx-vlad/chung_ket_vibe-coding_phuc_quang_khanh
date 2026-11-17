@@ -8,18 +8,21 @@ import {
   MOC_VANG,
   UU_DAI,
   VND_MOI_DIEM,
+  VND_MOI_DIEM_TIEU,
   chuanMa,
-  congDiem,
   dangKy,
+  diemToiDa,
   doiUuDai,
   dungVoucher,
   hangKeTiep,
   rong,
+  thanhToan,
   thongKe,
   timThanhVien,
   tinhDiem,
   xepHang,
   type Hang,
+  type HoaDon,
   type KetQuaDiem,
   type State,
   type ThanhVien,
@@ -115,15 +118,22 @@ export default function App() {
     }
   };
 
-  const xuLyCong = (ma: string, tien: number, gd: string): string | null => {
-    const r = congDiem(state, ma, tien, gd, new Date());
+  // Lập hóa đơn ở quầy: có thể dùng điểm trừ vào tiền, phần còn lại được cộng điểm
+  const xuLyThanhToan = (ma: string, tien: number, diemDung: number, gd: string): { loi: string } | { hoaDon: HoaDon } => {
+    const r = thanhToan(state, ma, tien, diemDung, gd, new Date());
     if (!r.ok) {
-      bao('loi', 'Không cộng điểm', r.loi);
-      return r.loi;
+      bao('loi', diemDung > 0 ? 'Không thanh toán được' : 'Không cộng điểm', r.loi);
+      return { loi: r.loi };
     }
     setState(r.state);
-    baoDiem(r);
-    return null;
+    if (diemDung > 0) {
+      bao(
+        'ok',
+        `Đã trừ ${so(diemDung)} điểm vào hóa đơn (−${so(r.hoaDon.giamTru)}đ)`,
+        `Khách trả ${so(r.hoaDon.conPhaiTra)}đ · cộng +${so(r.hoaDon.diemCong)} điểm · số dư ${so(r.soDu)} · hạng ${r.hangSau}`,
+      );
+    } else baoDiem(r);
+    return { hoaDon: r.hoaDon };
   };
 
   const xuLyDoi = (ma: string, maUuDai: string): string | null => {
@@ -212,7 +222,7 @@ export default function App() {
           />
         ) : null}
         {vai === 'quay' ? (
-          <QuayView state={state} onCong={xuLyCong} onMoThe={moThe} onNapMau={xuLyNapMau} onXoa={xuLyXoa} onBao={bao} />
+          <QuayView state={state} onThanhToan={xuLyThanhToan} onMoThe={moThe} onNapMau={xuLyNapMau} onXoa={xuLyXoa} onBao={bao} />
         ) : null}
         {vai === 'thele' ? <TheLe /> : null}
       </main>
@@ -404,6 +414,10 @@ function ThanhVienView(p: {
   }
 
   const lichSu = state.bienDong.filter((b) => b.maTV === tv.ma);
+  const lsCong = lichSu.filter((b) => b.diem > 0);
+  const lsTieu = lichSu.filter((b) => b.diem < 0);
+  const tongCong = lsCong.reduce((s, b) => s + b.diem, 0);
+  const tongTieu = lsTieu.reduce((s, b) => s - b.diem, 0);
   const vi = state.vi.filter((v) => v.maTV === tv.ma);
   const hang = xepHang(tv.diem);
 
@@ -511,35 +525,75 @@ function ThanhVienView(p: {
         </section>
 
         <section className="hop">
-          <h2>Lịch sử biến động điểm</h2>
-          {lichSu.length === 0 ? (
-            <p className="phu">Chưa có biến động. Đưa mã thẻ cho nhân viên quầy để được cộng điểm.</p>
+          <div className="dau-muc">
+            <h2>Lịch sử cộng điểm</h2>
+            <span className="nhan nhan-cong">Tổng đã cộng: +{so(tongCong)}</span>
+          </div>
+          {lsCong.length === 0 ? (
+            <p className="phu">Chưa có lần cộng điểm nào. Đưa mã thẻ cho nhân viên quầy khi thanh toán để được cộng điểm.</p>
           ) : (
             <div className="bang-cuon">
               <table>
                 <thead>
                   <tr>
-                    <th>Loại</th>
-                    <th className="phai">Điểm</th>
+                    <th>Hóa đơn</th>
+                    <th className="phai">Điểm cộng</th>
                     <th>Thời gian</th>
                     <th className="phai">Số dư</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {lichSu.map((b) => (
+                  {lsCong.map((b) => (
                     <tr key={b.id}>
-                      <td>
-                        {b.loai}
-                        <span className="phu nho"> · {b.thamChieu}</span>
-                      </td>
-                      <td className={`phai dam ${b.diem > 0 ? 'cong' : 'tru'}`}>
-                        {b.diem > 0 ? '+' : '−'}
-                        {so(Math.abs(b.diem))}
-                      </td>
+                      <td>{b.thamChieu}</td>
+                      <td className="phai dam cong">+{so(b.diem)}</td>
                       <td>{gio(b.thoiGian)}</td>
                       <td className="phai">{so(b.soDu)}</td>
                     </tr>
                   ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </section>
+
+        <section className="hop">
+          <div className="dau-muc">
+            <h2>Lịch sử tiêu điểm</h2>
+            <span className="nhan nhan-tru">Tổng đã tiêu: −{so(tongTieu)}</span>
+          </div>
+          {lsTieu.length === 0 ? (
+            <p className="phu">Chưa tiêu điểm lần nào. Bạn có thể đổi ưu đãi ở trên, hoặc dùng điểm trừ thẳng vào hóa đơn tại quầy (1 điểm = {so(VND_MOI_DIEM_TIEU)}đ).</p>
+          ) : (
+            <div className="bang-cuon">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Dùng vào</th>
+                    <th className="phai">Điểm trừ</th>
+                    <th>Thời gian</th>
+                    <th className="phai">Số dư</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {lsTieu.map((b) => {
+                    const hd = b.loai === 'Tiêu điểm' ? state.hoaDon.find((h) => h.ma === b.thamChieu) : undefined;
+                    const ud = UU_DAI.find((u) => u.ma === b.thamChieu);
+                    return (
+                      <tr key={b.id}>
+                        <td>
+                          {b.loai === 'Tiêu điểm' ? 'Thanh toán hóa đơn' : 'Đổi ưu đãi'}
+                          <span className="phu nho">
+                            {' '}
+                            · {hd ? `${b.thamChieu}: giảm ${so(hd.giamTru)}đ trên ${so(hd.tongTien)}đ` : ud ? ud.ten : b.thamChieu}
+                          </span>
+                        </td>
+                        <td className="phai dam tru">−{so(-b.diem)}</td>
+                        <td>{gio(b.thoiGian)}</td>
+                        <td className="phai">{so(b.soDu)}</td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
@@ -674,9 +728,45 @@ function QuetQR({ onMa }: { onMa: (ma: string) => void }) {
 
 /* ================= CHẾ ĐỘ QUẦY ================= */
 
+// Hóa đơn: ghi rõ số điểm trừ vào tiền. Dùng cho cả bản tạm tính và bản đã lập.
+function HoaDonView({ hd, tam }: { hd: HoaDon; tam?: boolean }) {
+  return (
+    <div className={`hoadon ${tam ? 'hoadon-tam' : ''}`} role={tam ? undefined : 'status'}>
+      <div className="hoadon-dau">
+        <strong>{tam ? 'Hóa đơn tạm tính' : `Hóa đơn ${hd.ma}`}</strong>
+        <span className="phu nho">
+          {hd.tenTV} · {hd.maTV}
+          {tam ? '' : ` · ${gio(hd.thoiGian)}`}
+        </span>
+      </div>
+      <dl>
+        <div>
+          <dt>Tổng tiền hàng</dt>
+          <dd>{so(hd.tongTien)}đ</dd>
+        </div>
+        <div className={hd.diemDung > 0 ? 'hd-tru' : 'hd-mo'}>
+          <dt>
+            Trừ bằng điểm{hd.diemDung > 0 ? ` (${so(hd.diemDung)} điểm × ${so(VND_MOI_DIEM_TIEU)}đ)` : ''}
+          </dt>
+          <dd>{hd.diemDung > 0 ? `−${so(hd.giamTru)}đ` : '0đ'}</dd>
+        </div>
+        <div className="hd-tong">
+          <dt>Khách cần trả</dt>
+          <dd>{so(hd.conPhaiTra)}đ</dd>
+        </div>
+      </dl>
+      <p className="hd-diem">
+        Điểm: {so(hd.soDuTruoc)}
+        {hd.diemDung > 0 ? <span className="tru"> − {so(hd.diemDung)} (thanh toán)</span> : null}
+        <span className="cong"> + {so(hd.diemCong)} (tích lũy)</span> = <strong>{so(hd.soDuSau)} điểm</strong> · hạng {xepHang(hd.soDuSau)}
+      </p>
+    </div>
+  );
+}
+
 function QuayView(p: {
   state: State;
-  onCong: (ma: string, tien: number, gd: string) => string | null;
+  onThanhToan: (ma: string, tien: number, diemDung: number, gd: string) => { loi: string } | { hoaDon: HoaDon };
   onMoThe: (ma: string) => void;
   onNapMau: () => void;
   onXoa: () => void;
@@ -687,12 +777,34 @@ function QuayView(p: {
   const [tien, setTien] = useState('');
   const [gd, setGd] = useState('');
   const [loi, setLoi] = useState('');
+  const [dung, setDung] = useState('');
+  const [hdMoi, setHdMoi] = useState<HoaDon | null>(null);
   const tienRef = useRef<HTMLInputElement>(null);
 
   const tv = ma.trim() ? timThanhVien(state, ma) : undefined;
   const soTien = Number(tien.replace(/[^\d]/g, ''));
-  const diemSe = tinhDiem(soTien);
+  const diemDung = Number(dung.replace(/[^\d]/g, '')) || 0;
+  const toiDa = tv ? diemToiDa(tv.diem, soTien) : 0;
+  const giamTru = diemDung * VND_MOI_DIEM_TIEU;
+  const conTra = Math.max(0, soTien - giamTru);
+  const diemSe = tinhDiem(conTra);
   const tk = thongKe(state);
+  const tamTinh: HoaDon | null =
+    tv && soTien > 0
+      ? {
+          ma: '',
+          maTV: tv.ma,
+          tenTV: tv.ten,
+          thoiGian: '',
+          tongTien: soTien,
+          diemDung,
+          giamTru,
+          conPhaiTra: conTra,
+          diemCong: diemSe,
+          soDuTruoc: tv.diem,
+          soDuSau: tv.diem - diemDung + diemSe,
+        }
+      : null;
 
   const nhanMa = (text: string) => {
     const m = timThanhVien(state, text);
@@ -714,12 +826,16 @@ function QuayView(p: {
 
   const gui = (e: FormEvent) => {
     e.preventDefault();
-    const l = p.onCong(tv?.ma ?? ma, soTien, gd);
-    setLoi(l ?? '');
-    if (!l) {
-      setTien('');
-      setGd('');
+    const r = p.onThanhToan(tv?.ma ?? ma, soTien, diemDung, gd);
+    if ('loi' in r) {
+      setLoi(r.loi);
+      return;
     }
+    setLoi('');
+    setHdMoi(r.hoaDon);
+    setTien('');
+    setGd('');
+    setDung('');
   };
 
   const lichSuTV = tv ? state.bienDong.filter((b) => b.maTV === tv.ma).slice(0, 4) : [];
@@ -728,9 +844,9 @@ function QuayView(p: {
     <div className="luoi">
       <div className="cot">
         <section className="hop">
-          <h1>Quầy: cộng điểm</h1>
+          <h1>Quầy: thanh toán và cộng điểm</h1>
           <p className="phu">
-            {so(VND_MOI_DIEM)}đ = 1 điểm. Mỗi mã giao dịch chỉ được cộng điểm một lần.
+            Tích điểm: {so(VND_MOI_DIEM)}đ = 1 điểm. Dùng điểm thanh toán: 1 điểm = {so(VND_MOI_DIEM_TIEU)}đ. Mỗi mã giao dịch chỉ được ghi một lần.
           </p>
           <QuetQR onMa={nhanMa} />
           <form onSubmit={gui} noValidate>
@@ -793,7 +909,35 @@ function QuayView(p: {
               placeholder="Ví dụ: 1.000.000"
               autoComplete="off"
             />
-            <p className="goi-y-o">{soTien > 0 ? `${so(soTien)}đ → cộng ${so(diemSe)} điểm` : 'Nhập số tiền trên hóa đơn.'}</p>
+            <p className="goi-y-o">{soTien > 0 ? `Khách trả ${so(conTra)}đ → cộng ${so(diemSe)} điểm` : 'Nhập tổng tiền trên hóa đơn.'}</p>
+
+            <label htmlFor="q-dung">Dùng điểm để thanh toán (không bắt buộc)</label>
+            <div className="hang-ngang">
+              <input
+                id="q-dung"
+                className="gian"
+                value={dung}
+                onChange={(e) => {
+                  const n = e.target.value.replace(/[^\d]/g, '').slice(0, 9);
+                  setDung(n ? Number(n).toLocaleString('vi-VN') : '');
+                }}
+                inputMode="numeric"
+                placeholder="Ví dụ: 200"
+                autoComplete="off"
+              />
+              <button type="button" className="nut nut-phu" disabled={toiDa < 1} onClick={() => setDung(toiDa.toLocaleString('vi-VN'))}>
+                Dùng tối đa
+              </button>
+            </div>
+            <p className={diemDung > toiDa && tv && soTien > 0 ? 'goi-y-o canh-bao' : 'goi-y-o'}>
+              {tv && soTien > 0
+                ? diemDung > toiDa
+                  ? `Vượt mức: hóa đơn này dùng tối đa ${so(toiDa)} điểm (thẻ có ${so(tv.diem)} điểm).`
+                  : `Thẻ có ${so(tv.diem)} điểm, hóa đơn này dùng tối đa ${so(toiDa)} điểm (= ${so(toiDa * VND_MOI_DIEM_TIEU)}đ).`
+                : `1 điểm = ${so(VND_MOI_DIEM_TIEU)}đ. Để trống nếu khách không dùng điểm.`}
+            </p>
+
+            {tamTinh ? <HoaDonView hd={tamTinh} tam /> : null}
 
             <label htmlFor="q-gd">Mã giao dịch (mã hóa đơn)</label>
             <div className="hang-ngang">
@@ -809,9 +953,15 @@ function QuayView(p: {
               </p>
             ) : null}
             <button className="nut nut-to" type="submit">
-              Cộng điểm
+              {diemDung > 0 ? 'Thanh toán bằng điểm và cộng điểm' : 'Cộng điểm'}
             </button>
           </form>
+          {hdMoi ? (
+            <div className="hd-moi">
+              <p className="dam">Đã lập hóa đơn:</p>
+              <HoaDonView hd={hdMoi} />
+            </div>
+          ) : null}
         </section>
 
         <section className="hop">
@@ -842,7 +992,7 @@ function QuayView(p: {
             </div>
             <div>
               <strong>{so(tk.diemDaDoi)}</strong>
-              <span>điểm đã đổi</span>
+              <span>điểm đã tiêu</span>
             </div>
             <div>
               <strong>{so(tk.soVoucher)}</strong>
@@ -850,7 +1000,7 @@ function QuayView(p: {
             </div>
           </div>
           <p className="phu">
-            Hạng: {tk.theoHang['Đồng']} Đồng · {tk.theoHang['Bạc']} Bạc · {tk.theoHang['Vàng']} Vàng. Điểm đã phát = điểm đang giữ ({so(tk.diemLuuHanh)}) + điểm đã đổi.
+            Hạng: {tk.theoHang['Đồng']} Đồng · {tk.theoHang['Bạc']} Bạc · {tk.theoHang['Vàng']} Vàng. Điểm đã phát = điểm đang giữ ({so(tk.diemLuuHanh)}) + điểm đã tiêu.
           </p>
         </section>
 
@@ -1010,6 +1160,12 @@ function TheLe() {
           ))}
         </ul>
         <p>Đủ điểm thì ưu đãi vào ví của thành viên và điểm bị trừ đúng bằng mức đổi. Thiếu điểm thì từ chối, số dư giữ nguyên.</p>
+        <h2>Thanh toán bằng điểm</h2>
+        <p>
+          Tại quầy, thành viên có thể dùng điểm trừ thẳng vào hóa đơn: <strong>1 điểm = {so(VND_MOI_DIEM_TIEU)}đ</strong> (100 điểm = {so(100 * VND_MOI_DIEM_TIEU)}đ).
+          Số điểm dùng không vượt số dư và không vượt giá trị hóa đơn. Hóa đơn ghi rõ số điểm trừ, số tiền giảm và số tiền khách cần trả.
+        </p>
+        <p>Phần tiền khách thực trả vẫn được tích điểm theo tỉ lệ {so(VND_MOI_DIEM)}đ = 1 điểm. Lịch sử tách riêng hai mục: cộng điểm và tiêu điểm.</p>
         <h2>Mã QR</h2>
         <p>Mỗi thẻ có mã QR chứa đúng mã thành viên (ví dụ KT-004). Quầy quét bằng camera, bằng ảnh, hoặc máy quét cầm tay.</p>
         <h2>Dữ liệu và AI</h2>
