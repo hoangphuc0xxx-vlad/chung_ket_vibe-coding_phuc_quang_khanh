@@ -65,7 +65,8 @@ Muốn dùng AI thật: sao chép `.env.example` thành `.env`, điền `GEMINI_
 
 ## Kiểm thử
 
-`npm test`: 13 test Vitest đạt (`src/lib/loyalty.test.ts`), gồm 5 ca của BTC trong sheet `KT_CaKiemTra`.
+`npm test`: 15 test Vitest đạt (`src/lib/loyalty.test.ts`, `src/lib/qr.test.ts`), gồm 5 ca của BTC trong sheet `KT_CaKiemTra`.
+Test QR vẽ mã `KT-004` thành điểm ảnh rồi giải mã lại, giống camera chụp thẻ.
 
 | Mã | Tình huống | Đầu vào | Kết quả mong đợi | Kết quả |
 | --- | --- | --- | --- | --- |
