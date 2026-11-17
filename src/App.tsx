@@ -41,6 +41,7 @@ interface ThongBao {
 const K_VAI = 'thethanhvien.vai.v1';
 const K_MA = 'thethanhvien.ma.v1';
 const K_DB = 'thethanhvien.madongbo.v1';
+const K_NOI = 'thethanhvien.danoi.v1'; // mã mà máy này đã nối và lấy dữ liệu về ít nhất một lần
 
 const so = (n: number) => n.toLocaleString('vi-VN');
 const gio = (iso: string) =>
@@ -107,7 +108,11 @@ function useDongBo(state: State, setState: Dispatch<SetStateAction<State>>, ma: 
           return;
         }
         const local = stateRef.current;
-        const muc = r.duLieu ? gop(local, r.duLieu) : local;
+        // Lần đầu máy này nối vào mã: database là chuẩn, bỏ dữ liệu cũ trên máy (kể cả thành viên đăng ký cục bộ).
+        // Các lần sau mới gộp, để không mất thao tác làm lúc mất mạng.
+        const lanDau = docChuoi(K_NOI) !== m;
+        const muc = r.duLieu ? (lanDau ? r.duLieu : gop(local, r.duLieu)) : local;
+        if (lanDau) ghiChuoi(K_NOI, m);
         const cMuc = chuan(muc);
         if (cMuc !== chuan(local)) {
           stateRef.current = muc;
@@ -277,6 +282,10 @@ export default function App() {
   };
 
   const tv = state.thanhVien.find((m) => m.ma === maHienTai);
+  // Thẻ đang mở không còn trong dữ liệu (ví dụ sau khi lấy dữ liệu từ database): thoát về màn hình đăng ký
+  useEffect(() => {
+    if (maHienTai && !state.thanhVien.some((m) => m.ma === maHienTai)) setMaHienTai('');
+  }, [state.thanhVien, maHienTai]);
   const moThe = (ma: string) => {
     setMaHienTai(ma);
     setVai('thanhvien');
