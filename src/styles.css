@@ -108,6 +108,30 @@ h2 {
   margin-bottom: 14px;
   font-size: 0.93rem;
 }
+.dongbo {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.86rem;
+  color: var(--phu);
+  margin: -6px 0 14px;
+}
+.cham {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: #9aa3b5;
+  flex: none;
+}
+.dongbo-ok .cham {
+  background: #1f9d6b;
+}
+.dongbo-dang .cham {
+  background: #d39a12;
+}
+.dongbo-offline .cham {
+  background: #c2410c;
+}
 .luoi {
   display: grid;
   gap: 18px;

@@ -61,6 +61,7 @@ export interface State {
   bienDong: BienDong[];
   vi: Voucher[];
   hoaDon: HoaDon[];
+  dot?: number; // tăng mỗi lần "Xóa toàn bộ dữ liệu", để lệnh xóa cũng đồng bộ sang máy khác
 }
 
 // ===== Thể lệ (công bố trong app ở mục Thể lệ) =====

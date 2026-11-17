@@ -62,6 +62,30 @@ Muốn dùng AI thật: sao chép `.env.example` thành `.env`, điền `GEMINI_
 - Nạp mẫu **không cộng lại điểm** (điểm hiện tại đã gồm giao dịch mẫu) và bấm nhiều lần **không nhân đôi**.
 - Voucher, quà tặng là **mô phỏng**.
 
+## Đồng bộ giữa các thiết bị (làm thêm, tùy chọn)
+
+Đề yêu cầu lưu localStorage và chạy khi mất mạng, nên **localStorage vẫn là nơi lưu chính**. Phần đồng bộ là lớp thêm bên trên, tắt đi app vẫn chạy đủ.
+
+- Khi có mạng, app gọi `/api/sync` (hàm máy chủ) để kéo bản dữ liệu chung về, **gộp** với dữ liệu trên máy rồi đẩy lên. Cứ 5 giây kiểm tra một lần, nên quầy cộng điểm trên máy tính thì thẻ trên điện thoại tự cập nhật.
+- Mất mạng: mọi thao tác vẫn ghi vào localStorage; có mạng lại app tự gộp và đẩy lên. Dòng trạng thái dưới tiêu đề cho biết đang đồng bộ, đã đồng bộ, hay chỉ lưu trên máy.
+- Quy tắc gộp (`src/lib/dongBo.ts`, có test): sổ giao dịch, lịch sử điểm, hóa đơn, ví là dữ liệu chỉ thêm nên lấy hợp theo mã; điểm của thành viên lấy theo biến động mới nhất; "Xóa toàn bộ dữ liệu" cũng được đồng bộ.
+- Máy chủ chỉ ghi khi phiên bản còn khớp (khóa lạc quan), nên hai máy ghi cùng lúc không đè mất dữ liệu của nhau.
+- Database: Supabase, một bảng `trang_thai`. Bảng bật RLS và **không có policy**, khóa secret chỉ nằm ở biến môi trường máy chủ, trình duyệt không bao giờ thấy.
+
+Bật đồng bộ: tạo bảng bằng SQL dưới đây, rồi điền `SUPABASE_URL` và `SUPABASE_SECRET_KEY` vào `.env` (và vào biến môi trường của Vercel).
+
+```sql
+create table trang_thai (
+  id text primary key,
+  du_lieu jsonb not null,
+  phien_ban bigint not null default 1,
+  cap_nhat timestamptz not null default now()
+);
+alter table trang_thai enable row level security;
+```
+
+Hạn chế của phần đồng bộ: app không có đăng nhập (đề cho phép), nên ai mở được app cũng thao tác được trên dữ liệu chung; hai máy **cùng mất mạng** mà cùng đăng ký thành viên mới, hoặc cùng giao dịch cho một thành viên, thì khi gộp có thể trùng mã hoặc lệch số dư.
+
 ## AI trong app
 
 - AI dùng cho một việc: **gợi ý nên đổi ưu đãi nào** với số điểm hiện có (chế độ Thành viên → Gợi ý ưu đãi).
@@ -73,7 +97,7 @@ Muốn dùng AI thật: sao chép `.env.example` thành `.env`, điền `GEMINI_
 
 ## Kiểm thử
 
-`npm test`: 19 test Vitest đạt (`src/lib/loyalty.test.ts`, `src/lib/qr.test.ts`), gồm 5 ca của BTC trong sheet `KT_CaKiemTra`.
+`npm test`: 25 test Vitest đạt (`src/lib/loyalty.test.ts`, `src/lib/qr.test.ts`, `src/lib/dongBo.test.ts`), gồm 5 ca của BTC trong sheet `KT_CaKiemTra`.
 Test QR vẽ mã `KT-004` thành điểm ảnh rồi giải mã lại, giống camera chụp thẻ.
 
 | Mã | Tình huống | Đầu vào | Kết quả mong đợi | Kết quả |
@@ -100,13 +124,15 @@ src/lib/goiY.ts        gợi ý ưu đãi: AI + dự phòng theo quy tắc
 src/lib/storage.ts     đọc ghi localStorage an toàn
 src/data/mau.ts        dữ liệu mẫu của BTC và hàm nạp
 src/App.tsx            giao diện 3 chế độ, thẻ, QR, quét camera
+src/lib/dongBo.ts      gộp dữ liệu giữa các thiết bị, gọi /api/sync
 api/ai.js              hàm máy chủ gọi AI (Vercel Function)
+api/sync.js            hàm máy chủ đồng bộ với Supabase (Vercel Function)
 public/sw.js           service worker cho chế độ offline
 ```
 
 ## Hạn chế và hướng phát triển
 
-- Dữ liệu nằm trên một trình duyệt: quầy và khách phải dùng chung máy. Hướng tiếp: database dùng chung (ví dụ Supabase) và đăng nhập thật cho nhân viên.
+- Khi chưa bật đồng bộ, dữ liệu nằm trên một trình duyệt: quầy và khách phải dùng chung máy. Bật đồng bộ (mục trên) thì nhiều thiết bị dùng chung dữ liệu. Hướng tiếp: đăng nhập thật cho nhân viên và tách bảng theo từng loại dữ liệu.
 - Không có phân quyền thật (đề cho phép): ai cũng chuyển được sang chế độ Quầy.
 - Quét QR phụ thuộc quyền camera của trình duyệt; đã có phương án quét từ ảnh và gõ tay.
 - Chưa có hạn dùng voucher và chưa hoàn điểm khi hủy giao dịch.

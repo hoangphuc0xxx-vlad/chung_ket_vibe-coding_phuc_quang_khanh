@@ -1,7 +1,8 @@
-import { useEffect, useRef, useState, type FormEvent } from 'react';
+import { useEffect, useRef, useState, type Dispatch, type FormEvent, type SetStateAction } from 'react';
 import jsQR from 'jsqr';
 import QRCode from 'qrcode';
 import { napMau } from './data/mau';
+import { chuan, dayLen, gop, keoVe } from './lib/dongBo';
 import { layGoiY, type GoiY } from './lib/goiY';
 import {
   MOC_BAC,
@@ -74,8 +75,81 @@ function useDemSo(dich: number): number {
   return v;
 }
 
+type TrangThaiDB = 'dang' | 'ok' | 'offline' | 'tat';
+
+// Đồng bộ với máy chủ: kéo về, gộp với dữ liệu trên máy, đẩy lên nếu máy này có gì mới.
+// Lỗi mạng không ảnh hưởng app: dữ liệu vẫn ở localStorage, có mạng lại sẽ tự đồng bộ.
+function useDongBo(state: State, setState: Dispatch<SetStateAction<State>>) {
+  const [tt, setTt] = useState<TrangThaiDB>('dang');
+  const [luc, setLuc] = useState('');
+  const stateRef = useRef(state);
+  stateRef.current = state;
+  const daKhop = useRef('');
+  const ban = useRef(false);
+  const tat = useRef(false);
+  const chay = useRef<() => Promise<void>>(async () => undefined);
+
+  chay.current = async () => {
+    if (ban.current || tat.current) return;
+    ban.current = true;
+    try {
+      for (let i = 0; i < 4; i++) {
+        const r = await keoVe();
+        if (r.chuaCauHinh) {
+          tat.current = true;
+          setTt('tat');
+          return;
+        }
+        const local = stateRef.current;
+        const muc = r.duLieu ? gop(local, r.duLieu) : local;
+        const cMuc = chuan(muc);
+        if (cMuc !== chuan(local)) {
+          stateRef.current = muc;
+          setState(muc);
+        }
+        const xong = () => {
+          daKhop.current = cMuc;
+          setTt('ok');
+          setLuc(new Date().toLocaleTimeString('vi-VN'));
+        };
+        if (r.duLieu && cMuc === chuan(r.duLieu)) return xong(); // máy chủ đã có đủ, không cần đẩy
+        const p = await dayLen(r.phienBan, muc);
+        if (p.ok && chuan(stateRef.current) === cMuc) return xong();
+        // xung đột (máy khác vừa ghi) hoặc máy này vừa có thay đổi mới: lặp lại kéo, gộp, đẩy
+      }
+    } catch {
+      setTt('offline');
+    } finally {
+      ban.current = false;
+    }
+  };
+
+  useEffect(() => {
+    void chay.current();
+    const id = setInterval(() => {
+      if (document.visibilityState === 'visible' && navigator.onLine) void chay.current();
+    }, 5000);
+    const on = () => void chay.current();
+    window.addEventListener('online', on);
+    return () => {
+      clearInterval(id);
+      window.removeEventListener('online', on);
+    };
+  }, []);
+
+  useEffect(() => {
+    const id = setTimeout(() => {
+      if (!tat.current && chuan(state) !== daKhop.current) void chay.current();
+    }, 500);
+    return () => clearTimeout(id);
+  }, [state]);
+
+  return { tt, luc };
+}
+
 export default function App() {
   const [state, setState] = useState<State>(docState);
+  const db = useDongBo(state, setState);
   const [vai, setVai] = useState<Vai>(() => {
     const v = docChuoi(K_VAI, 'thanhvien');
     return v === 'quay' || v === 'thele' ? v : 'thanhvien';
@@ -168,7 +242,7 @@ export default function App() {
 
   const xuLyXoa = () => {
     if (!window.confirm('Xóa toàn bộ thành viên, giao dịch và ví ưu đãi trên máy này? Không hoàn tác được.')) return;
-    setState(rong());
+    setState({ ...rong(), dot: Date.now() }); // `dot` mới để lệnh xóa cũng áp dụng cho các máy khác khi đồng bộ
     setMaHienTai('');
     bao('ok', 'Đã xóa toàn bộ dữ liệu');
   };
@@ -205,9 +279,19 @@ export default function App() {
 
       {!online ? (
         <p className="offline" role="status">
-          Đang mất mạng. App vẫn chạy bình thường, mọi dữ liệu lưu trên máy này.
+          Đang mất mạng. App vẫn chạy bình thường, mọi dữ liệu lưu trên máy này{db.tt === 'tat' ? '' : ' và sẽ tự đồng bộ khi có mạng lại'}.
         </p>
       ) : null}
+      <p className={`dongbo dongbo-${db.tt}`} role="status">
+        <span className="cham" aria-hidden="true" />
+        {db.tt === 'ok'
+          ? `Đã đồng bộ với máy chủ lúc ${db.luc}. Mở app trên thiết bị khác sẽ thấy cùng dữ liệu.`
+          : db.tt === 'dang'
+            ? 'Đang đồng bộ với máy chủ…'
+            : db.tt === 'offline'
+              ? 'Chưa đồng bộ được với máy chủ. Dữ liệu vẫn lưu trên máy này, app sẽ tự thử lại.'
+              : 'Dữ liệu chỉ lưu trên máy này (chưa nối database đồng bộ).'}
+      </p>
 
       <main>
         {vai === 'thanhvien' ? (
