@@ -27,10 +27,10 @@ describe('Gộp dữ liệu giữa hai thiết bị', () => {
     expect(chuan(gop(g, quay))).toBe(chuan(g));
   });
   it('máy mới (chưa có gì) nhận toàn bộ dữ liệu từ máy chủ', () => {
-    const xa = buoc(thanhToan(mau(), 'KT-004', 1_000_000, 200, 'TX-PAY-001', t(3)));
+    const xa = buoc(thanhToan(mau(), 'KT-004', 1_000_000, 20, 'TX-PAY-001', t(3)));
     const g = gop(rong(), xa);
     expect(g.thanhVien).toHaveLength(8);
-    expect(diem(g, 'KT-004')).toBe(3099);
+    expect(diem(g, 'KT-004')).toBe(3260);
   });
   it('thành viên đăng ký ở máy này xuất hiện ở máy kia', () => {
     const a = buoc(dangKy(mau(), 'Lan Phạm', '0900001009', t(4)));
@@ -50,7 +50,7 @@ describe('Gộp dữ liệu giữa hai thiết bị', () => {
     expect(gop(daXoa, cu).thanhVien).toHaveLength(0);
   });
   it('chuỗi chuẩn không đổi khi gộp một trạng thái với chính nó', () => {
-    const s = buoc(thanhToan(mau(), 'KT-004', 1_000_000, 200, 'TX-PAY-001', t(7)));
+    const s = buoc(thanhToan(mau(), 'KT-004', 1_000_000, 20, 'TX-PAY-001', t(7)));
     expect(chuan(gop(s, s))).toBe(chuan(s));
     // dòng cộng điểm của cùng hóa đơn đứng trước dòng tiêu điểm, số dư cuối đúng
     expect(gop(s, s).bienDong.slice(0, 2).map((b) => b.loai)).toEqual(['Cộng điểm', 'Tiêu điểm']);

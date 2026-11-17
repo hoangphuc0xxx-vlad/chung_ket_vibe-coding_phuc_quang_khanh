@@ -12,7 +12,7 @@ Công cụ: Claude Code. Nhóm ra yêu cầu, chốt quy tắc, duyệt kết qu
 | Phút 20 | Nối AI thật, có dự phòng | `api/ai.js` (Gemini → NVIDIA → quy tắc) | Xem 3 lỗi bên dưới |
 | Phút 30 | README, build, deploy | README, `npm run build`, Vercel | Kiểm tra link bằng tab ẩn danh |
 
-| Sau khi nộp bản đầu | Nhóm yêu cầu thêm: tách lịch sử cộng / tiêu điểm, dùng điểm để thanh toán, hóa đơn ghi rõ điểm trừ | Hàm `thanhToan` + 4 test, hóa đơn tạm tính và hóa đơn đã lập, 2 mục lịch sử | Chốt 1 điểm = 40đ để khớp voucher có sẵn; thử tay KT-004 dùng 200 điểm: 3.200 → 3.099 |
+| Sau khi nộp bản đầu | Nhóm yêu cầu thêm: tách lịch sử cộng / tiêu điểm, dùng điểm để thanh toán, hóa đơn ghi rõ điểm trừ | Hàm `thanhToan` + 4 test, hóa đơn tạm tính và hóa đơn đã lập, 2 mục lịch sử | AI đề xuất 1 điểm = 40đ cho khớp voucher; nhóm chốt lại **1 điểm = 10.000đ**. Test: KT-004 dùng 20 điểm cho hóa đơn 1.000.000đ: trừ 200.000đ, số dư 3.200 → 3.260 |
 
 | Tiếp theo | Nhóm nhận ra: không có database nên dữ liệu không đi theo thiết bị. AI đưa 2 phương án (xuất/nhập file, hoặc đồng bộ database) và nêu rủi ro lệch đề | Nhóm chọn đồng bộ database | AI giữ localStorage làm nơi lưu chính, thêm `/api/sync` + quy tắc gộp có 6 test; khóa database chỉ ở máy chủ; chưa cấu hình thì app tự chạy chế độ chỉ lưu trên máy |
 

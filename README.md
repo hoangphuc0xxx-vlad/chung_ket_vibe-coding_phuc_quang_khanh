@@ -19,8 +19,8 @@ Hai đầu là hai chế độ trong cùng một app, chuyển bằng nút **Th�
 
 **Thanh toán bằng điểm và hóa đơn – đã xong (làm thêm ngoài đề)**
 
-- Tại Quầy, thành viên dùng điểm trừ thẳng vào hóa đơn: **1 điểm = 40đ**. Không vượt số dư, không vượt giá trị hóa đơn; có nút **Dùng tối đa**.
-- **Hóa đơn** (tạm tính trước khi bấm, và bản đã lập sau khi bấm) ghi rõ: tổng tiền hàng, **trừ bằng điểm (số điểm × 40đ)**, khách cần trả, và phép tính điểm: số dư − điểm thanh toán + điểm tích lũy.
+- Tại Quầy, thành viên dùng điểm trừ thẳng vào hóa đơn: **1 điểm = 10.000đ**. Không vượt số dư, không vượt giá trị hóa đơn; có nút **Dùng tối đa**.
+- **Hóa đơn** (tạm tính trước khi bấm, và bản đã lập sau khi bấm) ghi rõ: tổng tiền hàng, **trừ bằng điểm (số điểm × 10.000đ)**, khách cần trả, và phép tính điểm: số dư − điểm thanh toán + điểm tích lũy.
 - Phần tiền khách thực trả vẫn được tích điểm (10.000đ = 1 điểm).
 - Lịch sử của thành viên tách thành **hai mục riêng**: *Lịch sử cộng điểm* và *Lịch sử tiêu điểm* (đổi ưu đãi, thanh toán hóa đơn), mỗi mục có tổng.
 
@@ -41,7 +41,7 @@ Hai đầu là hai chế độ trong cùng một app, chuyển bằng nút **Th�
 - **10.000đ = 1 điểm**, làm tròn xuống.
 - **Đồng** dưới 1.000 điểm · **Bạc** 1.000 – 4.999 · **Vàng** từ 5.000.
 - Hạng tính theo **điểm hiện có** (khớp bộ mẫu: KT-003 đổi điểm còn 800 thì là Đồng). Đổi nhiều điểm có thể giảm hạng; app báo trước ở từng ưu đãi.
-- **Dùng điểm thanh toán: 1 điểm = 40đ** (khớp voucher 500 điểm = 20.000đ). Điểm tích lũy tính trên số tiền khách thực trả sau khi trừ điểm.
+- **Dùng điểm thanh toán: 1 điểm = 10.000đ**. Điểm tích lũy tính trên số tiền khách thực trả sau khi trừ điểm.
 - Tổng điểm đã phát = điểm thành viên đang giữ + điểm đã tiêu (đổi ưu đãi, thanh toán).
 
 ## Cách chạy
@@ -113,9 +113,9 @@ Test QR vẽ mã `KT-004` thành điểm ảnh rồi giải mã lại, giống c
 | TC-07 | Đăng ký | Tên + SĐT hợp lệ / SĐT trùng / SĐT sai | Sinh KT-009 / từ chối / từ chối | Đạt (test tự động) |
 | TC-08 | Lên hạng ngay | KT-003 800 điểm + 2.000.000đ | 1.000 điểm, Đồng → Bạc | Đạt (test tự động) |
 | TC-09 | Dữ liệu sai ở Quầy | Sai mã, tiền 0, thiếu mã GD, dưới 10.000đ | Báo lỗi cụ thể, không cộng | Đạt (test tự động) |
-| TC-11 | Thanh toán bằng điểm | KT-004, hóa đơn 1.000.000đ, dùng 200 điểm | Trừ 8.000đ, trả 992.000đ, +99 điểm, số dư 3.200 → 3.099 | Đạt (test tự động + thử tay) |
+| TC-11 | Thanh toán bằng điểm | KT-004, hóa đơn 1.000.000đ, dùng 20 điểm | Trừ 200.000đ, trả 800.000đ, +80 điểm, số dư 3.200 → 3.260 | Đạt (test tự động) |
 | TC-12 | Dùng điểm quá mức | Quá số dư; quá giá trị hóa đơn; số lẻ | Từ chối, số dư giữ nguyên | Đạt (test tự động) |
-| TC-13 | Trả toàn bộ bằng điểm | KT-006, hóa đơn 100.000đ, dùng 2.500 điểm | Khách trả 0đ, không cộng điểm | Đạt (test tự động) |
+| TC-13 | Trả toàn bộ bằng điểm | KT-006, hóa đơn 100.000đ, dùng 10 điểm | Khách trả 0đ, không cộng điểm | Đạt (test tự động) |
 | TC-10 | AI hỏng hoặc mất mạng | Tắt mạng rồi bấm Gợi ý | Ra gợi ý theo quy tắc, ghi rõ nguồn | Đạt (test tự động cho quy tắc) |
 
 ## Cấu trúc

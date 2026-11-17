@@ -110,35 +110,35 @@ describe('Đăng ký và các trường hợp sai', () => {
   });
 });
 
-describe('Thanh toán bằng điểm (1 điểm = 40đ)', () => {
-  it('KT-004 dùng 200 điểm cho hóa đơn 1.000.000đ: trừ 8.000đ, trả 992.000đ, cộng 99 điểm, số dư 3.099', () => {
-    const r = thanhToan(mau(), 'KT-004', 1_000_000, 200, 'TX-PAY-001', now);
+describe('Thanh toán bằng điểm (1 điểm = 10.000đ)', () => {
+  it('KT-004 dùng 20 điểm cho hóa đơn 1.000.000đ: trừ 200.000đ, trả 800.000đ, cộng 80 điểm, số dư 3.260', () => {
+    const r = thanhToan(mau(), 'KT-004', 1_000_000, 20, 'TX-PAY-001', now);
     expect(r.ok).toBe(true);
     if (!r.ok) return;
-    expect(r.hoaDon).toMatchObject({ tongTien: 1_000_000, diemDung: 200, giamTru: 8000, conPhaiTra: 992_000, diemCong: 99, soDuTruoc: 3200, soDuSau: 3099 });
-    expect(diem(r.state, 'KT-004')).toBe(3099);
+    expect(r.hoaDon).toMatchObject({ tongTien: 1_000_000, diemDung: 20, giamTru: 200_000, conPhaiTra: 800_000, diemCong: 80, soDuTruoc: 3200, soDuSau: 3260 });
+    expect(diem(r.state, 'KT-004')).toBe(3260);
     // lịch sử có 2 dòng riêng: tiêu điểm và cộng điểm
     const ls = r.state.bienDong.filter((b) => b.thamChieu === 'TX-PAY-001');
     expect(ls.map((b) => [b.loai, b.diem, b.soDu])).toEqual([
-      ['Cộng điểm', 99, 3099],
-      ['Tiêu điểm', -200, 3000],
+      ['Cộng điểm', 80, 3260],
+      ['Tiêu điểm', -20, 3180],
     ]);
     // nhập lại cùng mã: không trừ, không cộng lần nữa
-    expect(thanhToan(r.state, 'KT-004', 1_000_000, 200, 'TX-PAY-001', now).ok).toBe(false);
+    expect(thanhToan(r.state, 'KT-004', 1_000_000, 20, 'TX-PAY-001', now).ok).toBe(false);
   });
   it('từ chối khi dùng quá số dư hoặc quá giá trị hóa đơn; số dư giữ nguyên', () => {
     const s = mau();
-    expect(thanhToan(s, 'KT-001', 1_000_000, 300, 'TX-PAY-002', now).ok).toBe(false); // KT-001 chỉ có 250
-    expect(thanhToan(s, 'KT-006', 100_000, 3000, 'TX-PAY-003', now).ok).toBe(false); // 3.000 điểm = 120.000đ > 100.000đ
-    expect(diemToiDa(12500, 100_000)).toBe(2500);
+    expect(thanhToan(s, 'KT-001', 10_000_000, 300, 'TX-PAY-002', now).ok).toBe(false); // KT-001 chỉ có 250
+    expect(thanhToan(s, 'KT-006', 100_000, 30, 'TX-PAY-003', now).ok).toBe(false); // 30 điểm = 300.000đ > 100.000đ
+    expect(diemToiDa(12500, 100_000)).toBe(10);
     expect(thanhToan(s, 'KT-006', 100_000, 1.5, 'TX-PAY-004', now).ok).toBe(false);
     expect(diem(s, 'KT-001')).toBe(250);
   });
   it('trả toàn bộ bằng điểm: khách trả 0đ, không cộng điểm', () => {
-    const r = thanhToan(mau(), 'KT-006', 100_000, 2500, 'TX-PAY-005', now);
+    const r = thanhToan(mau(), 'KT-006', 100_000, 10, 'TX-PAY-005', now);
     expect(r.ok && r.hoaDon.conPhaiTra).toBe(0);
     expect(r.ok && r.hoaDon.diemCong).toBe(0);
-    expect(r.ok && r.soDu).toBe(10000);
+    expect(r.ok && r.soDu).toBe(12490);
   });
   it('không dùng điểm thì giống cộng điểm thường và vẫn lập hóa đơn (TC-KT-01)', () => {
     const r = thanhToan(mau(), 'KT-008', 1_000_000, 0, 'TX-NEW-001', now);

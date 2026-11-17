@@ -1050,7 +1050,7 @@ function QuayView(p: {
                   setDung(n ? Number(n).toLocaleString('vi-VN') : '');
                 }}
                 inputMode="numeric"
-                placeholder="Ví dụ: 200"
+                placeholder="Ví dụ: 20"
                 autoComplete="off"
               />
               <button type="button" className="nut nut-phu" disabled={toiDa < 1} onClick={() => setDung(toiDa.toLocaleString('vi-VN'))}>
@@ -1347,7 +1347,7 @@ function TheLe() {
         <p>Đủ điểm thì ưu đãi vào ví của thành viên và điểm bị trừ đúng bằng mức đổi. Thiếu điểm thì từ chối, số dư giữ nguyên.</p>
         <h2>Thanh toán bằng điểm</h2>
         <p>
-          Tại quầy, thành viên có thể dùng điểm trừ thẳng vào hóa đơn: <strong>1 điểm = {so(VND_MOI_DIEM_TIEU)}đ</strong> (100 điểm = {so(100 * VND_MOI_DIEM_TIEU)}đ).
+          Tại quầy, thành viên có thể dùng điểm trừ thẳng vào hóa đơn: <strong>1 điểm = {so(VND_MOI_DIEM_TIEU)}đ</strong> (10 điểm = {so(10 * VND_MOI_DIEM_TIEU)}đ).
           Số điểm dùng không vượt số dư và không vượt giá trị hóa đơn. Hóa đơn ghi rõ số điểm trừ, số tiền giảm và số tiền khách cần trả.
         </p>
         <p>Phần tiền khách thực trả vẫn được tích điểm theo tỉ lệ {so(VND_MOI_DIEM)}đ = 1 điểm. Lịch sử tách riêng hai mục: cộng điểm và tiêu điểm.</p>

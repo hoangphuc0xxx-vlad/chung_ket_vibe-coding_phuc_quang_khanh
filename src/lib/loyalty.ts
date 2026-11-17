@@ -66,7 +66,7 @@ export interface State {
 
 // ===== Thể lệ (công bố trong app ở mục Thể lệ) =====
 export const VND_MOI_DIEM = 10000; // 10.000đ = 1 điểm, làm tròn xuống
-export const VND_MOI_DIEM_TIEU = 40; // dùng điểm thanh toán: 1 điểm = 40đ (khớp voucher 500 điểm = 20.000đ)
+export const VND_MOI_DIEM_TIEU = 10000; // dùng điểm thanh toán: 1 điểm = 10.000đ (do đội chốt)
 export const MOC_BAC = 1000; // từ 1.000 điểm: Bạc
 export const MOC_VANG = 5000; // từ 5.000 điểm: Vàng
 export const UU_DAI: UuDai[] = [
