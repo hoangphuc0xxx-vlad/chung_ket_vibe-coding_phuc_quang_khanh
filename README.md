@@ -66,11 +66,13 @@ Muốn dùng AI thật: sao chép `.env.example` thành `.env`, điền `GEMINI_
 
 Đề yêu cầu lưu localStorage và chạy khi mất mạng, nên **localStorage vẫn là nơi lưu chính**. Phần đồng bộ là lớp thêm bên trên, tắt đi app vẫn chạy đủ.
 
-- Khi có mạng, app gọi `/api/sync` (hàm máy chủ) để kéo bản dữ liệu chung về, **gộp** với dữ liệu trên máy rồi đẩy lên. Cứ 5 giây kiểm tra một lần, nên quầy cộng điểm trên máy tính thì thẻ trên điện thoại tự cập nhật.
+- **Mặc định tắt**: mỗi trình duyệt có dữ liệu riêng, đúng như đề (nhờ vậy mỗi giám khảo chạy 5 ca kiểm tra trên dữ liệu sạch của mình).
+- Bật ở **Quầy → Đồng bộ nhiều thiết bị**: nhập một **mã đồng bộ** (ví dụ `QUAY01`). Thiết bị nào nhập cùng mã thì dùng chung dữ liệu. Có thể mở nhanh bằng link `/?dongbo=QUAY01`.
+- Khi đã bật và có mạng, app gọi `/api/sync` (hàm máy chủ) để kéo bản dữ liệu chung về, **gộp** với dữ liệu trên máy rồi đẩy lên. Cứ 5 giây kiểm tra một lần, nên quầy cộng điểm trên máy tính thì thẻ trên điện thoại tự cập nhật.
 - Mất mạng: mọi thao tác vẫn ghi vào localStorage; có mạng lại app tự gộp và đẩy lên. Dòng trạng thái dưới tiêu đề cho biết đang đồng bộ, đã đồng bộ, hay chỉ lưu trên máy.
 - Quy tắc gộp (`src/lib/dongBo.ts`, có test): sổ giao dịch, lịch sử điểm, hóa đơn, ví là dữ liệu chỉ thêm nên lấy hợp theo mã; điểm của thành viên lấy theo biến động mới nhất; "Xóa toàn bộ dữ liệu" cũng được đồng bộ.
 - Máy chủ chỉ ghi khi phiên bản còn khớp (khóa lạc quan), nên hai máy ghi cùng lúc không đè mất dữ liệu của nhau.
-- Database: Supabase, một bảng `trang_thai`. Bảng bật RLS và **không có policy**, khóa secret chỉ nằm ở biến môi trường máy chủ, trình duyệt không bao giờ thấy.
+- Database: Supabase, một bảng `trang_thai`, mỗi mã đồng bộ là một dòng. Bảng bật RLS và **không có policy**, khóa secret chỉ nằm ở biến môi trường máy chủ, trình duyệt không bao giờ thấy.
 
 Bật đồng bộ: tạo bảng bằng SQL dưới đây, rồi điền `SUPABASE_URL` và `SUPABASE_SECRET_KEY` vào `.env` (và vào biến môi trường của Vercel).
 
@@ -84,7 +86,7 @@ create table trang_thai (
 alter table trang_thai enable row level security;
 ```
 
-Hạn chế của phần đồng bộ: app không có đăng nhập (đề cho phép), nên ai mở được app cũng thao tác được trên dữ liệu chung; hai máy **cùng mất mạng** mà cùng đăng ký thành viên mới, hoặc cùng giao dịch cho một thành viên, thì khi gộp có thể trùng mã hoặc lệch số dư.
+Hạn chế của phần đồng bộ: app không có đăng nhập (đề cho phép), nên ai biết mã đồng bộ cũng xem và sửa được dữ liệu của mã đó; hai máy **cùng mất mạng** mà cùng đăng ký thành viên mới, hoặc cùng giao dịch cho một thành viên, thì khi gộp có thể trùng mã hoặc lệch số dư.
 
 ## AI trong app
 

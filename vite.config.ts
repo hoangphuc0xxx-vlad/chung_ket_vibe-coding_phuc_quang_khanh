@@ -39,7 +39,8 @@ function apiDev(): Plugin {
           const raw = req.method === 'POST' ? await docBody(req, 1000000) : '';
           const mod = await server.ssrLoadModule('/api/sync.js');
           const env = loadEnv(server.config.mode, process.cwd(), '');
-          const kq = await mod.dongBo(req.method, raw ? JSON.parse(raw) : null, env);
+          const ma = new URL(req.url ?? '/', 'http://x').searchParams.get('ma');
+          const kq = await mod.dongBo(req.method, raw ? JSON.parse(raw) : null, env, ma);
           res.statusCode = kq.status;
           res.end(JSON.stringify(kq.json));
         } catch {

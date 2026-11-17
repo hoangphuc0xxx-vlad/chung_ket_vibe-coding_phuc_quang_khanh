@@ -56,8 +56,12 @@ function chuanHoa(d: unknown): State | null {
 
 export type KetQuaKeo = { chuaCauHinh: true } | { chuaCauHinh: false; phienBan: number; duLieu: State | null };
 
-export async function keoVe(): Promise<KetQuaKeo> {
-  const r = await fetch('/api/sync', { cache: 'no-store', signal: AbortSignal.timeout(8000) });
+// Mã đồng bộ: các thiết bị nhập cùng một mã thì dùng chung dữ liệu. Không có mã thì chỉ lưu trên máy.
+export const chuanMaDongBo = (s: string): string => s.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 16);
+export const maDongBoHopLe = (s: string): boolean => /^[A-Z0-9]{4,16}$/.test(s);
+
+export async function keoVe(ma: string): Promise<KetQuaKeo> {
+  const r = await fetch(`/api/sync?ma=${encodeURIComponent(ma)}`, { cache: 'no-store', signal: AbortSignal.timeout(8000) });
   const d = await r.json();
   if (d?.chuaCauHinh) return { chuaCauHinh: true };
   if (!r.ok || !d?.ok) throw new Error('sync-get');
@@ -65,8 +69,8 @@ export async function keoVe(): Promise<KetQuaKeo> {
 }
 
 // Đẩy lên kèm phiên bản đã biết. Máy chủ từ chối nếu đã có máy khác ghi trước (xung đột) để không ghi đè mất dữ liệu.
-export async function dayLen(phienBan: number, duLieu: State): Promise<{ ok: true; phienBan: number } | { ok: false }> {
-  const r = await fetch('/api/sync', {
+export async function dayLen(ma: string, phienBan: number, duLieu: State): Promise<{ ok: true; phienBan: number } | { ok: false }> {
+  const r = await fetch(`/api/sync?ma=${encodeURIComponent(ma)}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ phienBan, duLieu }),

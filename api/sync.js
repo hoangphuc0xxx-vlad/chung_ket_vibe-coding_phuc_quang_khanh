@@ -4,10 +4,12 @@
 // Chưa cấu hình thì trả chuaCauHinh: app tự chạy chỉ với localStorage.
 
 const BANG = 'trang_thai';
-const ID = 'chinh';
+// Mỗi "mã đồng bộ" là một dòng riêng. Thiết bị không nhập mã thì không đụng tới database.
+const MA_HOP_LE = /^[A-Z0-9]{4,16}$/;
 
 function cauHinh(env) {
-  const url = String(env.SUPABASE_URL ?? '').trim().replace(/\/+$/, '');
+  // Nhận cả tên biến NEXT_PUBLIC_SUPABASE_URL (tên Supabase gợi ý khi bấm Connect). URL không phải bí mật.
+  const url = String(env.SUPABASE_URL ?? env.NEXT_PUBLIC_SUPABASE_URL ?? '').trim().replace(/\/+$/, '');
   const key = String(env.SUPABASE_SECRET_KEY ?? env.SUPABASE_SERVICE_ROLE_KEY ?? '').trim();
   return /^https:\/\/[a-z0-9.-]+$/i.test(url) && key ? { url, key } : null;
 }
@@ -28,7 +30,7 @@ async function goi(c, duong, init = {}) {
   });
 }
 
-async function docHienTai(c) {
+async function docHienTai(c, ID) {
   const r = await goi(c, `${BANG}?id=eq.${ID}&select=phien_ban,du_lieu`);
   if (!r.ok) throw new Error(`doc ${r.status}`);
   const ds = await r.json();
@@ -36,12 +38,14 @@ async function docHienTai(c) {
   return dong ? { phienBan: Number(dong.phien_ban) || 0, duLieu: dong.du_lieu } : { phienBan: 0, duLieu: null };
 }
 
-export async function dongBo(method, body, env) {
+export async function dongBo(method, body, env, ma) {
   const c = cauHinh(env);
   if (!c) return { status: 200, json: { ok: false, chuaCauHinh: true } };
+  const ID = String(ma ?? '').trim().toUpperCase();
+  if (!MA_HOP_LE.test(ID)) return { status: 400, json: { ok: false, loi: 'Mã đồng bộ gồm 4–16 chữ hoặc số.' } };
   try {
     if (method === 'GET') {
-      return { status: 200, json: { ok: true, ...(await docHienTai(c)) } };
+      return { status: 200, json: { ok: true, ...(await docHienTai(c, ID)) } };
     }
     if (method !== 'POST') return { status: 405, json: { ok: false, loi: 'Chỉ nhận GET và POST.' } };
 
@@ -76,7 +80,15 @@ export default async function handler(req, res) {
       body = null;
     }
   }
-  const kq = await dongBo(req.method, body, process.env);
+  let ma = req.query?.ma;
+  if (ma === undefined) {
+    try {
+      ma = new URL(req.url, 'http://x').searchParams.get('ma');
+    } catch {
+      ma = '';
+    }
+  }
+  const kq = await dongBo(req.method, body, process.env, Array.isArray(ma) ? ma[0] : ma);
   res.setHeader('Cache-Control', 'no-store');
   res.status(kq.status).json(kq.json);
 }

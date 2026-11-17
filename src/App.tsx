@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, type Dispatch, type FormEvent, type SetSta
 import jsQR from 'jsqr';
 import QRCode from 'qrcode';
 import { napMau } from './data/mau';
-import { chuan, dayLen, gop, keoVe } from './lib/dongBo';
+import { chuan, chuanMaDongBo, dayLen, gop, keoVe, maDongBoHopLe } from './lib/dongBo';
 import { layGoiY, type GoiY } from './lib/goiY';
 import {
   MOC_BAC,
@@ -40,6 +40,7 @@ interface ThongBao {
 
 const K_VAI = 'thethanhvien.vai.v1';
 const K_MA = 'thethanhvien.ma.v1';
+const K_DB = 'thethanhvien.madongbo.v1';
 
 const so = (n: number) => n.toLocaleString('vi-VN');
 const gio = (iso: string) =>
@@ -75,29 +76,34 @@ function useDemSo(dich: number): number {
   return v;
 }
 
-type TrangThaiDB = 'dang' | 'ok' | 'offline' | 'tat';
+type TrangThaiDB = 'dang' | 'ok' | 'offline' | 'tat' | 'chuacauhinh';
 
 // Đồng bộ với máy chủ: kéo về, gộp với dữ liệu trên máy, đẩy lên nếu máy này có gì mới.
+// Chỉ chạy khi thiết bị đã nhập "mã đồng bộ". Không có mã: dữ liệu chỉ ở localStorage, đúng như đề.
 // Lỗi mạng không ảnh hưởng app: dữ liệu vẫn ở localStorage, có mạng lại sẽ tự đồng bộ.
-function useDongBo(state: State, setState: Dispatch<SetStateAction<State>>) {
-  const [tt, setTt] = useState<TrangThaiDB>('dang');
+function useDongBo(state: State, setState: Dispatch<SetStateAction<State>>, ma: string) {
+  const [tt, setTt] = useState<TrangThaiDB>(ma ? 'dang' : 'tat');
   const [luc, setLuc] = useState('');
   const stateRef = useRef(state);
   stateRef.current = state;
+  const maRef = useRef(ma);
+  maRef.current = ma;
   const daKhop = useRef('');
   const ban = useRef(false);
   const tat = useRef(false);
   const chay = useRef<() => Promise<void>>(async () => undefined);
 
   chay.current = async () => {
-    if (ban.current || tat.current) return;
+    const m = maRef.current;
+    if (ban.current || tat.current || !m) return;
     ban.current = true;
     try {
       for (let i = 0; i < 4; i++) {
-        const r = await keoVe();
+        const r = await keoVe(m);
+        if (maRef.current !== m) return; // người dùng vừa đổi hoặc tắt mã
         if (r.chuaCauHinh) {
           tat.current = true;
-          setTt('tat');
+          setTt('chuacauhinh');
           return;
         }
         const local = stateRef.current;
@@ -113,19 +119,31 @@ function useDongBo(state: State, setState: Dispatch<SetStateAction<State>>) {
           setLuc(new Date().toLocaleTimeString('vi-VN'));
         };
         if (r.duLieu && cMuc === chuan(r.duLieu)) return xong(); // máy chủ đã có đủ, không cần đẩy
-        const p = await dayLen(r.phienBan, muc);
+        const p = await dayLen(m, r.phienBan, muc);
+        if (maRef.current !== m) return;
         if (p.ok && chuan(stateRef.current) === cMuc) return xong();
         // xung đột (máy khác vừa ghi) hoặc máy này vừa có thay đổi mới: lặp lại kéo, gộp, đẩy
       }
     } catch {
-      setTt('offline');
+      if (maRef.current === m) setTt('offline');
     } finally {
       ban.current = false;
     }
   };
 
+  // Bật, đổi hoặc tắt mã đồng bộ
   useEffect(() => {
+    daKhop.current = '';
+    tat.current = false;
+    if (!ma) {
+      setTt('tat');
+      return;
+    }
+    setTt('dang');
     void chay.current();
+  }, [ma]);
+
+  useEffect(() => {
     const id = setInterval(() => {
       if (document.visibilityState === 'visible' && navigator.onLine) void chay.current();
     }, 5000);
@@ -139,7 +157,7 @@ function useDongBo(state: State, setState: Dispatch<SetStateAction<State>>) {
 
   useEffect(() => {
     const id = setTimeout(() => {
-      if (!tat.current && chuan(state) !== daKhop.current) void chay.current();
+      if (maRef.current && !tat.current && chuan(state) !== daKhop.current) void chay.current();
     }, 500);
     return () => clearTimeout(id);
   }, [state]);
@@ -149,7 +167,18 @@ function useDongBo(state: State, setState: Dispatch<SetStateAction<State>>) {
 
 export default function App() {
   const [state, setState] = useState<State>(docState);
-  const db = useDongBo(state, setState);
+  // Mã đồng bộ lấy từ link (?dongbo=MA) hoặc từ lần nhập trước
+  const [maDB, setMaDB] = useState(() => {
+    let tuLink = '';
+    try {
+      tuLink = chuanMaDongBo(new URLSearchParams(window.location.search).get('dongbo') ?? '');
+    } catch {
+      /* bỏ qua */
+    }
+    return maDongBoHopLe(tuLink) ? tuLink : docChuoi(K_DB);
+  });
+  useEffect(() => ghiChuoi(K_DB, maDB), [maDB]);
+  const db = useDongBo(state, setState, maDB);
   const [vai, setVai] = useState<Vai>(() => {
     const v = docChuoi(K_VAI, 'thanhvien');
     return v === 'quay' || v === 'thele' ? v : 'thanhvien';
@@ -285,12 +314,14 @@ export default function App() {
       <p className={`dongbo dongbo-${db.tt}`} role="status">
         <span className="cham" aria-hidden="true" />
         {db.tt === 'ok'
-          ? `Đã đồng bộ với máy chủ lúc ${db.luc}. Mở app trên thiết bị khác sẽ thấy cùng dữ liệu.`
+          ? `Đang đồng bộ với mã ${maDB} · lần cuối ${db.luc}. Thiết bị khác nhập cùng mã sẽ thấy cùng dữ liệu.`
           : db.tt === 'dang'
-            ? 'Đang đồng bộ với máy chủ…'
+            ? `Đang đồng bộ với mã ${maDB}…`
             : db.tt === 'offline'
-              ? 'Chưa đồng bộ được với máy chủ. Dữ liệu vẫn lưu trên máy này, app sẽ tự thử lại.'
-              : 'Dữ liệu chỉ lưu trên máy này (chưa nối database đồng bộ).'}
+              ? `Chưa đồng bộ được (mã ${maDB}). Dữ liệu vẫn lưu trên máy này, app sẽ tự thử lại.`
+              : db.tt === 'chuacauhinh'
+                ? 'Máy chủ chưa nối database nên chưa đồng bộ được. Dữ liệu vẫn lưu trên máy này.'
+                : 'Dữ liệu lưu trên máy này. Muốn dùng chung với thiết bị khác: vào Quầy → Đồng bộ nhiều thiết bị.'}
       </p>
 
       <main>
@@ -306,7 +337,7 @@ export default function App() {
           />
         ) : null}
         {vai === 'quay' ? (
-          <QuayView state={state} onThanhToan={xuLyThanhToan} onMoThe={moThe} onNapMau={xuLyNapMau} onXoa={xuLyXoa} onBao={bao} />
+          <QuayView state={state} maDB={maDB} onDatMaDB={setMaDB} onThanhToan={xuLyThanhToan} onMoThe={moThe} onNapMau={xuLyNapMau} onXoa={xuLyXoa} onBao={bao} />
         ) : null}
         {vai === 'thele' ? <TheLe /> : null}
       </main>
@@ -850,6 +881,8 @@ function HoaDonView({ hd, tam }: { hd: HoaDon; tam?: boolean }) {
 
 function QuayView(p: {
   state: State;
+  maDB: string;
+  onDatMaDB: (ma: string) => void;
   onThanhToan: (ma: string, tien: number, diemDung: number, gd: string) => { loi: string } | { hoaDon: HoaDon };
   onMoThe: (ma: string) => void;
   onNapMau: () => void;
@@ -862,6 +895,8 @@ function QuayView(p: {
   const [gd, setGd] = useState('');
   const [loi, setLoi] = useState('');
   const [dung, setDung] = useState('');
+  const [maNhap, setMaNhap] = useState(p.maDB);
+  const [loiMa, setLoiMa] = useState('');
   const [hdMoi, setHdMoi] = useState<HoaDon | null>(null);
   const tienRef = useRef<HTMLInputElement>(null);
 
@@ -1059,6 +1094,63 @@ function QuayView(p: {
               Xóa toàn bộ dữ liệu
             </button>
           </div>
+
+          <h2>Đồng bộ nhiều thiết bị</h2>
+          <p className="phu">
+            Mặc định dữ liệu chỉ lưu trên máy này. Nhập cùng một mã trên các thiết bị (ví dụ máy quầy và điện thoại của khách) để dùng chung dữ liệu qua database.
+            Mất mạng app vẫn chạy và tự đồng bộ lại khi có mạng.
+          </p>
+          <form
+            noValidate
+            onSubmit={(e) => {
+              e.preventDefault();
+              const m = chuanMaDongBo(maNhap);
+              if (!maDongBoHopLe(m)) {
+                setLoiMa('Mã đồng bộ gồm 4–16 chữ hoặc số, ví dụ QUAY01.');
+                return;
+              }
+              setLoiMa('');
+              setMaNhap(m);
+              p.onDatMaDB(m);
+            }}
+          >
+            <label htmlFor="q-madb">Mã đồng bộ</label>
+            <div className="hang-ngang">
+              <input
+                id="q-madb"
+                className="gian"
+                value={maNhap}
+                onChange={(e) => setMaNhap(chuanMaDongBo(e.target.value))}
+                placeholder="Ví dụ: QUAY01"
+                autoComplete="off"
+              />
+              <button type="submit" className="nut nut-phu">
+                {p.maDB ? 'Đổi mã' : 'Bật đồng bộ'}
+              </button>
+              {p.maDB ? (
+                <button
+                  type="button"
+                  className="nut nut-nguy"
+                  onClick={() => {
+                    p.onDatMaDB('');
+                    setMaNhap('');
+                  }}
+                >
+                  Tắt
+                </button>
+              ) : null}
+            </div>
+            {loiMa ? (
+              <p className="loi" role="alert">
+                {loiMa}
+              </p>
+            ) : null}
+            <p className="goi-y-o">
+              {p.maDB
+                ? `Đang bật với mã ${p.maDB}. Mở nhanh trên máy khác bằng link: ${window.location.origin}/?dongbo=${p.maDB}`
+                : 'Đang tắt. Ai biết mã thì xem và sửa được dữ liệu chung, nên hãy đặt mã khó đoán.'}
+            </p>
+          </form>
         </section>
       </div>
 
